@@ -9,6 +9,7 @@ import numpy as np
 import re
 from sentence_transformers import SentenceTransformer, util
 
+
 def json_safe(value):
     """Convert numpy and other types into JSON-serializable types."""
     if isinstance(value, (np.bool_, bool)):
@@ -172,6 +173,10 @@ def analyze():
     return jsonify(response)
 
 
+text = extract_text_from_pdf("datasets/applicants/SunwayTranscripts.pdf")
+
+grade = extract_subject_grade(text, ["Computer Mathematics"])
+print("GRADE =", grade)
 
 if __name__ == "__main__":
     app.run(port=8000)

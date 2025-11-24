@@ -1,6 +1,10 @@
 import re
 from typing import List, Optional, Tuple
 from rapidfuzz import fuzz, process
+from typing import List, Optional
+
+# Grade pattern (A+, A, A-, B+, ...)
+GRADE_PATTERN = r"(A\+|A-|A|B\+|B-|B|C\+|C-|C|D\+|D-|D|F\*?|EX|P)"
 
 GRADE_REGEX = re.compile(r"\b([A-F][\+\-]?)\b", re.IGNORECASE)
 
@@ -21,26 +25,56 @@ def _best_subject_line(lines: List[str], aliases: List[str]) -> Tuple[int, str, 
             best_idx, best_line, best_score = i, ln, score
     return best_idx, best_line, best_score
 
-def extract_subject_grade(transcript_text: str, subject_aliases: List[str], min_match: int = 80) -> Optional[str]:
+def extract_subject_grade(text: str, aliases: List[str]) -> Optional[str]:
     """
-    Find the grade for the given subject (by aliases). Searches the subject line and nearby lines.
-    Returns grade string like 'A-', 'B', 'C+', or None if not found.
+    Extract subject grade from Sunway-style transcript.
+    Supports:
+    - Subject Code + Subject Title + Credits + Grade Point + Grade
+    - Subject Title + Credits + Grade
+    - Fuzzy alias matching
     """
-    lines = _split_lines(transcript_text)
-    idx, matched_line, score = _best_subject_line(lines, subject_aliases)
-    if idx == -1 or score < min_match:
-        return None
 
-    # Search the subject line and a small window around it for a grade.
-    window = lines[max(0, idx-3): min(len(lines), idx+4)]
-    text_window = " | ".join(window)
+    lines = text.splitlines()
 
-    # Common transcript layouts: subject ... grade ... credits
-    # Try near-subject-line first
-    m = GRADE_REGEX.search(text_window)
-    if m:
-        return m.group(1).upper()
+    # Make alias lowercase for comparison
+    aliases_lower = [a.lower() for a in aliases]
 
-    # Fallback: look on the same line first
-    m2 = GRADE_REGEX.search(matched_line)
-    return m2.group(1).upper() if m2 else None
+    # ------------------------------
+    # 1) Try matching CODE + TITLE + CREDITS + GP + GRADE
+    # ------------------------------
+    # Example:
+    #   MTH1114 Computer Mathematics 4 3.50 A+
+    for line in lines:
+        line_clean = " ".join(line.split())  # normalize spaces
+        # Search for alias in line
+        if any(alias in line_clean.lower() for alias in aliases_lower):
+            match = re.search(GRADE_PATTERN, line_clean, re.IGNORECASE)
+            if match:
+                return match.group(1).upper()
+
+    # ------------------------------
+    # 2) Try TITLE + credits + grade
+    # Example:
+    #   Computer Mathematics     4    3.50   A+
+    # ------------------------------
+    for line in lines:
+        line_clean = " ".join(line.split())
+        if any(alias in line_clean.lower() for alias in aliases_lower):
+            # look for grade anywhere after the alias
+            match = re.search(GRADE_PATTERN, line_clean, re.IGNORECASE)
+            if match:
+                return match.group(1).upper()
+
+    # ------------------------------
+    # 3) Last fallback: global search around alias
+    # ------------------------------
+    text_lower = text.lower()
+    for alias in aliases_lower:
+        idx = text_lower.find(alias)
+        if idx != -1:
+            window = text[idx: idx + 100]  # look 100 characters ahead
+            match = re.search(GRADE_PATTERN, window, re.IGNORECASE)
+            if match:
+                return match.group(1).upper()
+
+    return None
