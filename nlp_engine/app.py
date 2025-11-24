@@ -8,6 +8,8 @@ import os
 import numpy as np
 import re
 from sentence_transformers import SentenceTransformer, util
+from extractors.ai_credit_extractor import extract_credit_hours_ai
+
 
 
 def json_safe(value):
@@ -139,7 +141,17 @@ def analyze():
     # 3) GRADE + CREDIT extraction (from TRANSCRIPT ONLY)
     # -----------------------------------------------------
     subject_grade = extract_subject_grade(applicant_transcript_text, aliases)
+
+    # Try regex/fuzzy first
     subject_credits = extract_subject_credits(applicant_course_text, aliases)
+
+    # If regex fails → use AI extractor
+    if subject_credits is None:
+        subject_credits = extract_credit_hours_ai(applicant_course_text, subject_name)
+    
+    #Debug Temp
+    print("AI CREDIT TEST:", extract_credit_hours_ai(applicant_course_text, subject_name))
+    #
 
     # -----------------------------------------------------
     # 4) SEMANTIC SIMILARITY (COURSE-CONTENT vs COURSE-CONTENT)
