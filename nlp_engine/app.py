@@ -148,10 +148,7 @@ def analyze():
     # If regex fails → use AI extractor
     if subject_credits is None:
         subject_credits = extract_credit_hours_ai(applicant_course_text, subject_name)
-    
-    #Debug Temp
-    print("AI CREDIT TEST:", extract_credit_hours_ai(applicant_course_text, subject_name))
-    #
+
 
     # -----------------------------------------------------
     # 4) SEMANTIC SIMILARITY (COURSE-CONTENT vs COURSE-CONTENT)
@@ -190,21 +187,10 @@ def analyze():
         "reasoning": {k: json_safe(v) for k, v in reasoning.items()},
         "suggested_equivalent_grade": json_safe(suggested_equivalent_grade)
     }
-    
-    #Debug Temp
-    print("----- TRANSCRIPT TEXT -----")
-    print(applicant_transcript_text[:800])
-    print("----- END -----")
-    #
+
 
     return jsonify(response)
 
-#Debug Temp
-text = extract_text_from_pdf("datasets/applicants/SunwayTranscripts.pdf")
-
-grade = extract_subject_grade(text, ["Computer Mathematics"])
-print("GRADE =", grade)
-#
 
 # --- Manual test for grade extraction when starting the service ---
 if __name__ == "__main__":
