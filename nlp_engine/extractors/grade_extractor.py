@@ -1,80 +1,107 @@
 import re
-from typing import List, Optional, Tuple
-from rapidfuzz import fuzz, process
 from typing import List, Optional
+from transformers import pipeline
 
-# Grade pattern (A+, A, A-, B+, ...)
-GRADE_PATTERN = r"(A\+|A-|A|B\+|B-|B|C\+|C-|C|D\+|D-|D|F\*?|EX|P)"
+# Valid grades we accept
+VALID_GRADES = {
+    "A+", "A", "A-",
+    "B+", "B", "B-",
+    "C+", "C", "C-",
+    "D+", "D", "D-",
+    "F", "EX", "P"
+}
 
-GRADE_REGEX = re.compile(r"\b([A-F][\+\-]?)\b", re.IGNORECASE)
+# Load a small free text2text model (FLAN-T5 small)
+# This happens once when the module is imported.
+print("[grade_extractor] Loading FLAN-T5-small for grade extraction...")
+grade_nlp = pipeline("text2text-generation", model="google/flan-t5-small")
+print("[grade_extractor] Model loaded.")
 
-def _split_lines(text: str) -> List[str]:
-    # normalize & split
-    return [ln.strip() for ln in text.splitlines() if ln.strip()]
 
-def _best_subject_line(lines: List[str], aliases: List[str]) -> Tuple[int, str, int]:
+def _build_subject_window(text: str, aliases: List[str],
+                          before: int = 600, after: int = 800) -> str:
     """
-    Returns (index, matched_line, score). If not found, (-1, "", 0)
+    Get a local snippet of the transcript around the subject name.
+    This keeps the prompt short but relevant.
     """
-    best_idx, best_line, best_score = -1, "", 0
-    for i, ln in enumerate(lines):
-        # compare each alias to the current line, keep max score
-        scores = [fuzz.partial_ratio(alias.lower(), ln.lower()) for alias in aliases]
-        score = max(scores) if scores else 0
-        if score > best_score:
-            best_idx, best_line, best_score = i, ln, score
-    return best_idx, best_line, best_score
+    if not text:
+        return ""
+
+    lower = text.lower()
+    idx = -1
+
+    # Try to find exact alias occurrence
+    for alias in aliases:
+        alias = alias.lower().strip()
+        if not alias:
+            continue
+        i = lower.find(alias)
+        if i != -1:
+            idx = i
+            break
+
+    # If we can't find it, just return a truncated transcript
+    if idx == -1:
+        return text[:4000]
+
+    start = max(0, idx - before)
+    end = min(len(text), idx + after)
+    return text[start:end]
+
 
 def extract_subject_grade(text: str, aliases: List[str]) -> Optional[str]:
     """
-    Extract subject grade from Sunway-style transcript.
-    Supports:
-    - Subject Code + Subject Title + Credits + Grade Point + Grade
-    - Subject Title + Credits + Grade
-    - Fuzzy alias matching
+    Use a small LLM (FLAN-T5) to read the transcript snippet and
+    extract the letter grade for the given subject.
+
+    Returns:
+        'A+', 'B', 'C-' etc, or None if not found.
     """
+    if not text or not aliases:
+        return None
 
-    lines = text.splitlines()
+    # Prepare a focused window around the subject
+    snippet = _build_subject_window(text, aliases)
 
-    # Make alias lowercase for comparison
-    aliases_lower = [a.lower() for a in aliases]
+    subject_display = aliases[0]
 
-    # ------------------------------
-    # 1) Try matching CODE + TITLE + CREDITS + GP + GRADE
-    # ------------------------------
-    # Example:
-    #   MTH1114 Computer Mathematics 4 3.50 A+
-    for line in lines:
-        line_clean = " ".join(line.split())  # normalize spaces
-        # Search for alias in line
-        if any(alias in line_clean.lower() for alias in aliases_lower):
-            match = re.search(GRADE_PATTERN, line_clean, re.IGNORECASE)
-            if match:
-                return match.group(1).upper()
+    prompt = f"""
+You are given a snippet of a student's academic transcript.
 
-    # ------------------------------
-    # 2) Try TITLE + credits + grade
-    # Example:
-    #   Computer Mathematics     4    3.50   A+
-    # ------------------------------
-    for line in lines:
-        line_clean = " ".join(line.split())
-        if any(alias in line_clean.lower() for alias in aliases_lower):
-            # look for grade anywhere after the alias
-            match = re.search(GRADE_PATTERN, line_clean, re.IGNORECASE)
-            if match:
-                return match.group(1).upper()
+Your task:
+- Find the final letter grade that the student obtained for the subject "{subject_display}".
+- Only consider letter grades in this set: A+, A, A-, B+, B, B-, C+, C, C-, D+, D, D-, F, EX, P.
+- Return ONLY the grade (for example: A+, B, C-, F).
+- If you cannot find the grade for this subject, reply with: NONE
 
-    # ------------------------------
-    # 3) Last fallback: global search around alias
-    # ------------------------------
-    text_lower = text.lower()
-    for alias in aliases_lower:
-        idx = text_lower.find(alias)
-        if idx != -1:
-            window = text[idx: idx + 100]  # look 100 characters ahead
-            match = re.search(GRADE_PATTERN, window, re.IGNORECASE)
-            if match:
-                return match.group(1).upper()
+Transcript snippet:
+{snippet}
+"""
 
+    try:
+        result = grade_nlp(
+            prompt.strip(),
+            max_length=16,
+            num_return_sequences=1,
+            do_sample=False
+        )
+    except Exception as e:
+        print("[grade_extractor] Error calling model:", e)
+        return None
+
+    raw_answer = result[0]["generated_text"].strip().upper()
+    # Debug print (optional – can comment out when stable)
+    print("[grade_extractor] Raw model answer:", repr(raw_answer))
+
+    # Split into tokens and pick the first valid grade token
+    tokens = re.split(r"[\s,;:.]+", raw_answer)
+    for tok in tokens:
+        tok = tok.strip().upper()
+        if tok in VALID_GRADES:
+            return tok
+
+    if "NONE" in raw_answer:
+        return None
+
+    # If model gave something odd
     return None

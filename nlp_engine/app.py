@@ -21,12 +21,21 @@ def json_safe(value):
     return value   # fallback: string or None
 
 def detect_course_content(text: str) -> bool:
-    keywords = [
-        "course description", "learning outcome", "assessment",
-        "syllabus", "lecture plan", "prerequisite", "course title"
+    syllabus_keywords = [
+        "learning outcome",
+        "course description",
+        "topics",
+        "prerequisite",
+        "instructional methods",
+        "assessment methods",
+        "weekly schedule",
+        "lecture plan",
+        "reference materials",
     ]
+
     text_lower = text.lower()
-    return any(k in text_lower for k in keywords)
+    return any(k in text_lower for k in syllabus_keywords)
+
 
 app = Flask(__name__)
 print("Loading embedding model... please wait.")
@@ -169,14 +178,30 @@ def analyze():
         "reasoning": {k: json_safe(v) for k, v in reasoning.items()},
         "suggested_equivalent_grade": json_safe(suggested_equivalent_grade)
     }
+    
+    #Debug Temp
+    print("----- TRANSCRIPT TEXT -----")
+    print(applicant_transcript_text[:800])
+    print("----- END -----")
+    #
 
     return jsonify(response)
 
-
+#Debug Temp
 text = extract_text_from_pdf("datasets/applicants/SunwayTranscripts.pdf")
 
 grade = extract_subject_grade(text, ["Computer Mathematics"])
 print("GRADE =", grade)
+#
 
+# --- Manual test for grade extraction when starting the service ---
 if __name__ == "__main__":
+    try:
+        sample_text = extract_text_from_pdf("datasets/applicants/SunwayTranscripts.pdf")
+        test_grade = extract_subject_grade(sample_text, ["Computer Mathematics"])
+        print("TEST GRADE (Computer Mathematics):", test_grade)
+    except Exception as e:
+        print("Manual grade test failed:", e)
+
     app.run(port=8000)
+
