@@ -5,6 +5,7 @@ import matchingRoutes from "./routes/matching.js";
 import applicationRoutes from "./routes/application.js";
 import authRoutes from "./routes/auth.js";
 
+
 dotenv.config();
 const app = express();
 
