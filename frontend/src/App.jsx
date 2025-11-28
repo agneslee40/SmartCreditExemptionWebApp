@@ -1,21 +1,32 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
-import LoginPage from "./pages/LoginPage";
-import TaskManagementPage from "./pages/TaskManagementPage";
-import ApplicationDetailsPage from "./pages/ApplicationDetailsPage";
-import ApplicationReviewPage from "./pages/ApplicationReviewPage";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import Layout from "./components/Layout";
+
+// Pages
+import Dashboard from "./pages/Dashboard";
+import TasksManagement from "./pages/TasksManagement";
+import ApplicationReview from "./pages/ApplicationReview";
+import Teams from "./pages/Teams";
+import Login from "./pages/Login";
+import ApplicationDetails from "./pages/ApplicationDetails";
+
 
 function App() {
   return (
-    <Router>
+    <BrowserRouter>
       <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/tasks" element={<TaskManagementPage />} />
-        <Route path="/applications/:id" element={<ApplicationDetailsPage />} />
-        <Route path="/applications/:id/review" element={<ApplicationReviewPage />} />
-        {/* Default redirect */}
-        <Route path="*" element={<Navigate to="/tasks" replace />} />
+        {/* Login has no layout */}
+        <Route path="/login" element={<Login />} />
+
+        {/* All pages with Topbar & Navbar */}
+        <Route element={<Layout />}>
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/tasks" element={<TasksManagement />} />
+          <Route path="/review/:id" element={<ApplicationReview />} />
+          <Route path="/teams" element={<Teams />} />
+          <Route path="/details/:id" element={<ApplicationDetails />} />
+        </Route>
       </Routes>
-    </Router>
+    </BrowserRouter>
   );
 }
 
