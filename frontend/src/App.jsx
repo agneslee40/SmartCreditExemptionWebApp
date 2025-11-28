@@ -24,6 +24,7 @@ function App() {
           <Route path="/review/:id" element={<ApplicationReview />} />
           <Route path="/teams" element={<Teams />} />
           <Route path="/details/:id" element={<ApplicationDetails />} />
+          <Route path="/application/:id" element={<ApplicationDetails />} />
         </Route>
       </Routes>
     </BrowserRouter>
