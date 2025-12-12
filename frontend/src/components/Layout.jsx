@@ -3,7 +3,7 @@ import Topbar from "./Topbar";
 
 export default function Layout() {
   return (
-    <div className="bg-[#F4F4F7] min-h-screen w-full">
+    <div className="min-h-screen bg-white">
       <Topbar />
       <div className="px-10 py-8">
         <Outlet />

@@ -99,7 +99,7 @@ function SectionCard({ title, countBadge, rows }) {
 
 export default function Dashboard() {
   return (
-    <div className="px-10 pb-16 pt-6 bg-[#F6F6FA] min-h-screen">
+    <div className="bg-white">
       <SectionCard
         title="Your Pending Actions"
         countBadge={pendingActions.length}
