@@ -1,35 +1,38 @@
 import { NavLink } from "react-router-dom";
 
-const tabs = [
-  { name: "Home", path: "/" },
-  { name: "Teams", path: "/teams" },
-  { name: "Tasks Management", path: "/tasks" },
-  { name: "Reference Cases", path: "/reference" }, // create route later if needed
-];
+const pillBase =
+  "px-8 py-3 rounded-full font-semibold transition-all " +
+  "shadow-[inset_0_6px_12px_rgba(255,255,255,0.55)]"; // inner shadow look
+
+const pillInactive = "bg-white text-[#0B0F2A]";
+const pillActive = "bg-[#FF7A2F] text-black";
 
 export default function Navbar() {
   return (
-    <div className="rounded-full bg-[#0B0F2A] px-3 py-2 shadow-md">
-      <div className="flex gap-3">
-        {tabs.map((t) => (
-          <NavLink
-            key={t.path}
-            to={t.path}
-            className={({ isActive }) =>
-              [
-                "px-6 py-2 rounded-full font-semibold transition",
-                // inner shadow (the “pressed-in” look)
-                "shadow-[inset_0_2px_6px_rgba(0,0,0,0.25)]",
-                isActive
-                  ? "bg-[#FF7A2F] text-black"
-                  : "bg-[#F2F2F2] text-black",
-              ].join(" ")
-            }
-          >
-            {t.name}
-          </NavLink>
-        ))}
-      </div>
+    <div className="bg-[#0B0F2A] rounded-full px-4 py-3 flex gap-4 justify-center">
+      <NavLink to="/" end className={({ isActive }) =>
+        `${pillBase} ${isActive ? pillActive : pillInactive}`
+      }>
+        Home
+      </NavLink>
+
+      <NavLink to="/teams" className={({ isActive }) =>
+        `${pillBase} ${isActive ? pillActive : pillInactive}`
+      }>
+        Teams
+      </NavLink>
+
+      <NavLink to="/tasks" className={({ isActive }) =>
+        `${pillBase} ${isActive ? pillActive : pillInactive}`
+      }>
+        Tasks Management
+      </NavLink>
+
+      <NavLink to="/reference" className={({ isActive }) =>
+        `${pillBase} ${isActive ? pillActive : pillInactive}`
+      }>
+        Reference Cases
+      </NavLink>
     </div>
   );
 }

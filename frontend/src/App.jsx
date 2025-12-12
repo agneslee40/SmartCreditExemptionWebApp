@@ -8,7 +8,7 @@ import ApplicationReview from "./pages/ApplicationReview";
 import Teams from "./pages/Teams";
 import Login from "./pages/Login";
 import ApplicationDetails from "./pages/ApplicationDetails";
-
+import ReferenceCases from "./pages/ReferenceCases";
 
 function App() {
   return (
@@ -25,6 +25,7 @@ function App() {
           <Route path="/teams" element={<Teams />} />
           <Route path="/details/:id" element={<ApplicationDetails />} />
           <Route path="/application/:id" element={<ApplicationDetails />} />
+          <Route path="/reference" element={<ReferenceCases />} />
         </Route>
       </Routes>
     </BrowserRouter>
