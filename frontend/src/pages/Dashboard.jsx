@@ -49,7 +49,7 @@ function SectionCard({ title, countBadge, rows }) {
   return (
     <section className="mt-10">
       <div className="flex items-center gap-6 mb-6">
-        <div className="w-20 h-20 rounded-full bg-[#FF6B2C] text-white flex items-center justify-center text-4xl font-bold shadow-md">
+        <div className="w-20 h-20 rounded-full bg-[#FF6B2C] text-[#0B0F2A] flex items-center justify-center text-4xl font-bold shadow-md">
           {countBadge}
         </div>
         <h2 className="text-4xl font-extrabold tracking-tight text-[#050827]">
@@ -57,8 +57,9 @@ function SectionCard({ title, countBadge, rows }) {
         </h2>
       </div>
 
-      <div className="bg-white rounded-3xl shadow-sm px-8 py-6">
-        <table className="w-full text-sm text-left">
+      <div className="mt-4 rounded-[32px] bg-[#EFEFEF] px-6 py-5">
+        <div className="overflow-x-auto">
+          <table className="min-w-[1100px] w-full text-sm text-left">
           <thead className="text-gray-500 border-b">
             <tr className="h-12">
               <th>ID</th>
@@ -92,6 +93,7 @@ function SectionCard({ title, countBadge, rows }) {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
     </section>
   );
