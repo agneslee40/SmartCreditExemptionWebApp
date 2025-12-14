@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Layout from "./components/Layout";
 
 // Pages
@@ -24,7 +24,8 @@ function App() {
           <Route path="/tasks/applications/:id" element={<ApplicationDetails />} />
           <Route path="/tasks/applications/:id/review" element={<ApplicationReview />} />
           <Route path="/teams" element={<Teams />} />   
-          <Route path="/reference" element={<ReferenceCases />} />      
+          <Route path="/reference" element={<ReferenceCases />} />     
+          <Route path="*" element={<Navigate to="/login" />} /> 
         </Route>
       </Routes>
     </BrowserRouter>
