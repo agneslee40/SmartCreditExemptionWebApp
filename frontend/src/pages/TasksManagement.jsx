@@ -495,7 +495,7 @@ export default function TasksManagement() {
 
                             {/* View details */}
                             <button
-                              onClick={() => navigate(`/applications/${a.id}`)}
+                              onClick={() => navigate(`/tasks/applications/${a.id}`)}
                               className="rounded-full bg-[#EFEFEF] px-8 py-3 text-sm font-semibold text-[#0B0F2A] hover:bg-[#E7E7E7]"
                             >
                               View Details
@@ -503,7 +503,7 @@ export default function TasksManagement() {
 
                             {/* Review */}
                             <button
-                              onClick={() => navigate(`/applications/${a.id}/review`)}
+                              onClick={() => navigate(`/tasks/applications/${a.id}/review`)}
                               className="rounded-full bg-[#EFEFEF] px-8 py-3 text-sm font-semibold text-[#0B0F2A] hover:bg-[#E7E7E7]"
                             >
                               Review
