@@ -71,18 +71,8 @@ function IconComment({ className = "" }) {
 function IconInfo({ className = "" }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path
-        d="M12 8h.01"
-        stroke="currentColor"
-        strokeWidth="3"
-        strokeLinecap="round"
-      />
-      <path
-        d="M11 12h1v6h1"
-        stroke="currentColor"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-      />
+      <path d="M12 8h.01" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+      <path d="M11 12h1v6h1" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
       <path
         d="M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Z"
         stroke="currentColor"
@@ -94,18 +84,8 @@ function IconInfo({ className = "" }) {
 function IconBulb({ className = "" }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path
-        d="M9 18h6"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-      />
-      <path
-        d="M10 22h4"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-      />
+      <path d="M9 18h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <path d="M10 22h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
       <path
         d="M8.5 14.5c-1.2-1.2-2-2.7-2-4.5a5.5 5.5 0 1 1 11 0c0 1.8-.8 3.3-2 4.5-.7.7-1.2 1.8-1.2 3V18h-3.6v-.5c0-1.2-.5-2.3-1.2-3Z"
         stroke="currentColor"
@@ -121,21 +101,9 @@ function IconBranch({ className = "" }) {
       <path d="M6 3v12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
       <path d="M6 9c6 0 6 8 12 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
       <path d="M18 21V9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-      <path
-        d="M6 21a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"
-        stroke="currentColor"
-        strokeWidth="2"
-      />
-      <path
-        d="M18 7a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"
-        stroke="currentColor"
-        strokeWidth="2"
-      />
-      <path
-        d="M18 23a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"
-        stroke="currentColor"
-        strokeWidth="2"
-      />
+      <path d="M6 21a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z" stroke="currentColor" strokeWidth="2" />
+      <path d="M18 7a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z" stroke="currentColor" strokeWidth="2" />
+      <path d="M18 23a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z" stroke="currentColor" strokeWidth="2" />
     </svg>
   );
 }
@@ -193,9 +161,7 @@ function SideIconButton({ active, label, children, onClick }) {
       onClick={onClick}
       className={[
         "relative flex h-12 w-12 items-center justify-center rounded-xl border",
-        active
-          ? "bg-[#D9D9D9] border-black/25"
-          : "bg-white border-black/15 hover:bg-black/[0.03]",
+        active ? "bg-[#D9D9D9] border-black/25" : "bg-white border-black/15 hover:bg-black/[0.03]",
       ].join(" ")}
       title={label}
       aria-label={label}
@@ -272,33 +238,31 @@ export default function ApplicationReview() {
   const [panel, setPanel] = useState("suggested"); // suggested | info | comment | decision | version
   const [docId, setDocId] = useState(DOCS[0].id);
   const [page, setPage] = useState(1);
+  const [goTo, setGoTo] = useState("");
 
   const [highlights, setHighlights] = useState(initialHighlights);
-  const [selectedHighlightId, setSelectedHighlightId] = useState("h-sim"); // default “Similarity”
+  const [selectedHighlightId, setSelectedHighlightId] = useState("h-sim");
   const selectedHighlight = useMemo(
     () => highlights.find((h) => h.id === selectedHighlightId),
     [highlights, selectedHighlightId]
   );
 
-  const [systemOutcome, setSystemOutcome] = useState("Approve"); // Approve / Reject
+  const [systemOutcome, setSystemOutcome] = useState("Approve");
   const [userAcceptedSystem, setUserAcceptedSystem] = useState(true);
 
   const [editMode, setEditMode] = useState(false);
-  const [dirty, setDirty] = useState(false); // if highlights changed -> show regenerate
+  const [dirty, setDirty] = useState(false);
 
   const [toast, setToast] = useState("");
   const [confirm, setConfirm] = useState({ open: false, type: "" }); // accept | reject | regen
 
-  // comments for highlights
   const [comments, setComments] = useState([
     { id: 1, highlightId: "h-sim", by: "Programme Leader", at: "2025-11-20 10:20", text: "Similarity looks valid. Check if learning outcomes align." },
   ]);
   const [newComment, setNewComment] = useState("");
 
-  // PL decision
   const [myDecision, setMyDecision] = useState("Approved");
 
-  // computed UI header values
   const currentDoc = DOCS.find((d) => d.id === docId) || DOCS[0];
   const totalPages = currentDoc.pages;
   const similarityScore = "81%";
@@ -313,7 +277,6 @@ export default function ApplicationReview() {
   };
 
   const toggleHighlightCorrectness = (hid) => {
-    // simple demo: flip “verified” by adding/removing an asterisk in snippet
     setHighlights((prev) =>
       prev.map((h) =>
         h.id === hid
@@ -326,7 +289,6 @@ export default function ApplicationReview() {
   };
 
   const regenerate = () => {
-    // demo behavior: if “Similarity” highlight is not ✓, drop score and reject
     const sim = highlights.find((h) => h.key === "similarity");
     const simOk = !!sim && sim.snippet.endsWith(" ✓");
     const newOutcome = simOk ? "Approve" : "Reject";
@@ -337,12 +299,9 @@ export default function ApplicationReview() {
     setConfirm({ open: false, type: "" });
   };
 
-  const onAcceptSystem = () => {
-    setConfirm({ open: true, type: "accept" });
-  };
-  const onRejectSystem = () => {
-    setConfirm({ open: true, type: "reject" });
-  };
+  const onAcceptSystem = () => setConfirm({ open: true, type: "accept" });
+  const onRejectSystem = () => setConfirm({ open: true, type: "reject" });
+
   const onConfirmAction = () => {
     if (confirm.type === "accept") {
       setUserAcceptedSystem(true);
@@ -361,30 +320,30 @@ export default function ApplicationReview() {
     if (!text || !selectedHighlightId) return;
     setComments((prev) => [
       ...prev,
-      {
-        id: Date.now(),
-        highlightId: selectedHighlightId,
-        by: "Programme Leader",
-        at: "Just now",
-        text,
-      },
+      { id: Date.now(), highlightId: selectedHighlightId, by: "Programme Leader", at: "Just now", text },
     ]);
     setNewComment("");
     setToast("Comment added.");
   };
 
-  const myHighlightComments = useMemo(() => {
-    return comments.filter((c) => c.highlightId === selectedHighlightId);
-  }, [comments, selectedHighlightId]);
+  const myHighlightComments = useMemo(
+    () => comments.filter((c) => c.highlightId === selectedHighlightId),
+    [comments, selectedHighlightId]
+  );
 
-  const submitDecision = () => {
-    setToast("Decision submitted.");
+  const submitDecision = () => setToast("Decision submitted.");
+
+  const goToPage = () => {
+    const n = parseInt(goTo, 10);
+    if (!Number.isFinite(n)) return;
+    const clamped = Math.max(1, Math.min(totalPages, n));
+    setPage(clamped);
+    setGoTo("");
   };
 
   return (
     <div className="bg-white">
-      {/* Top line: back + title + doc dropdown + similarity + page counter */}
-      {/* Header: ONE ROW like Figma */}
+      {/* ---------- HEADER (single baseline) ---------- */}
       <div className="flex items-center gap-6">
         {/* Back */}
         <button
@@ -395,9 +354,9 @@ export default function ApplicationReview() {
           <IconBack className="h-8 w-8" />
         </button>
 
-        {/* Title + controls in ONE LINE */}
-        <div className="flex w-full items-center gap-6">
-          <h1 className="text-5xl font-extrabold tracking-tight text-[#0B0F2A] whitespace-nowrap">
+        {/* Center group: Title + dropdown + similarity (same baseline) */}
+        <div className="flex flex-1 items-center gap-6">
+          <h1 className="text-5xl font-extrabold tracking-tight text-[#0B0F2A] whitespace-nowrap leading-none">
             Application Review
           </h1>
 
@@ -409,7 +368,8 @@ export default function ApplicationReview() {
                 setDocId(e.target.value);
                 setPage(1);
               }}
-              className="appearance-none rounded-2xl bg-[#EFEFEF] px-5 py-3 pr-10 text-sm font-semibold text-[#0B0F2A] outline-none"
+              className="appearance-none rounded-2xl bg-[#EFEFEF] px-5 py-3 pr-10 text-sm font-semibold text-[#0B0F2A] outline-none
+                         min-w-[320px] max-w-[420px]"
             >
               {DOCS.map((d) => (
                 <option key={d.id} value={d.id}>
@@ -429,77 +389,48 @@ export default function ApplicationReview() {
               {similarityScore}
             </span>
           </div>
+        </div>
 
-          {/* Page counter */}
-          <div className="ml-auto flex items-center gap-3 text-sm font-bold text-[#0B0F2A] whitespace-nowrap">
-            <button
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              className="rounded-xl px-3 py-2 hover:bg-black/5"
-              aria-label="Previous page"
-            >
-              ‹
-            </button>
-
-            <span className="min-w-[70px] text-center">
-              {page} of {totalPages}
+        {/* Right side: Edit Highlights + Regenerate (top-right like you wanted) */}
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setEditMode((v) => !v)}
+            className={[
+              "rounded-2xl px-4 py-3 text-sm font-extrabold",
+              editMode ? "bg-[#0B0F2A] text-white" : "bg-[#EFEFEF] text-[#0B0F2A]",
+            ].join(" ")}
+          >
+            <span className="inline-flex items-center gap-2">
+              <IconPencil className="h-5 w-5" />
+              {editMode ? "Editing Highlights" : "Edit Highlights"}
             </span>
+          </button>
 
+          {dirty && (
             <button
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              className="rounded-xl px-3 py-2 hover:bg-black/5"
-              aria-label="Next page"
+              onClick={() => setConfirm({ open: true, type: "regen" })}
+              className="rounded-2xl bg-[#FF6B2C] px-4 py-3 text-sm font-extrabold text-black shadow-sm hover:shadow-md"
             >
-              ›
+              Regenerate suggested outcome
             </button>
-          </div>
+          )}
         </div>
       </div>
 
-      {/* SECOND ROW (new feature): Edit Highlights + Regenerate */}
-      <div className="mt-5 flex items-center justify-end gap-3">
-        <button
-          onClick={() => setEditMode((v) => !v)}
-          className={[
-            "rounded-2xl px-4 py-3 text-sm font-extrabold",
-            editMode ? "bg-[#0B0F2A] text-white" : "bg-[#EFEFEF] text-[#0B0F2A]",
-          ].join(" ")}
-        >
-          <span className="inline-flex items-center gap-2">
-            <IconPencil className="h-5 w-5" />
-            {editMode ? "Editing Highlights" : "Edit Highlights"}
-          </span>
-        </button>
-
-        {dirty && (
-          <button
-            onClick={() => setConfirm({ open: true, type: "regen" })}
-            className="rounded-2xl bg-[#FF6B2C] px-4 py-3 text-sm font-extrabold text-black shadow-sm hover:shadow-md"
-          >
-            Regenerate suggested outcome
-          </button>
-        )}
-      </div>
-
-
-      {/* Main layout: Viewer | vertical icons | right panel */}
+      {/* ---------- MAIN LAYOUT ---------- */}
       <div className="mt-10 flex gap-8">
         {/* LEFT: Document viewer mock */}
-        <div className="w-[62%] rounded-3xl bg-white shadow-[0_14px_40px_rgba(0,0,0,0.08)]">
+        <div className="relative w-[62%] rounded-3xl bg-white shadow-[0_14px_40px_rgba(0,0,0,0.08)]">
           <div className="h-[70vh] overflow-auto rounded-3xl p-6">
             <div className="text-sm font-semibold text-[#0B0F2A]/70">
               {currentDoc.name} — Page {page}
             </div>
 
-            {/* Fake document page */}
             <div className="mt-4 rounded-2xl border border-black/10 bg-white p-6">
-              <div className="text-center font-bold text-[#0B0F2A]">
-                Online Course Syllabus
-              </div>
+              <div className="text-center font-bold text-[#0B0F2A]">Online Course Syllabus</div>
               <div className="mt-4 border-t border-black/10" />
 
-              {/* Highlight blocks */}
               <div className="mt-6 space-y-6 text-sm text-[#0B0F2A]/85">
-                {/* Simulate a highlighted line */}
                 <HighlightLine
                   active={selectedHighlight?.key === "similarity"}
                   label="CST 2309: Introduction to Web Programming"
@@ -507,6 +438,7 @@ export default function ApplicationReview() {
                   editable={editMode}
                   onToggle={() => toggleHighlightCorrectness("h-sim")}
                 />
+
                 <div className="h-3" />
                 <div className="font-semibold text-[#0B0F2A]">Instructor Information</div>
                 <div className="text-[#0B0F2A]/70">Email Address: (hidden)</div>
@@ -535,54 +467,76 @@ export default function ApplicationReview() {
               </div>
             </div>
           </div>
+
+          {/* Page counter moved to bottom-right of LEFT viewer (sticky overlay) */}
+          <div className="absolute bottom-5 right-5">
+            <div className="flex items-center gap-2 rounded-2xl bg-white/95 px-3 py-2 shadow-[0_10px_26px_rgba(0,0,0,0.12)] border border-black/10">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                className="rounded-xl px-3 py-2 text-sm font-bold text-[#0B0F2A] hover:bg-black/5"
+                aria-label="Previous page"
+              >
+                ‹
+              </button>
+
+              <span className="min-w-[72px] text-center text-sm font-bold text-[#0B0F2A] whitespace-nowrap">
+                {page} of {totalPages}
+              </span>
+
+              <button
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                className="rounded-xl px-3 py-2 text-sm font-bold text-[#0B0F2A] hover:bg-black/5"
+                aria-label="Next page"
+              >
+                ›
+              </button>
+
+              <div className="mx-1 h-7 w-px bg-black/10" />
+
+              <input
+                value={goTo}
+                onChange={(e) => setGoTo(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") goToPage();
+                }}
+                placeholder="Go"
+                className="w-14 rounded-xl bg-[#EFEFEF] px-2 py-2 text-sm font-bold text-[#0B0F2A] outline-none"
+              />
+              <button
+                onClick={goToPage}
+                className="rounded-xl bg-[#EFEFEF] px-3 py-2 text-sm font-extrabold text-[#0B0F2A] hover:bg-black/5"
+              >
+                OK
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* MIDDLE: vertical icon buttons */}
         <div className="flex flex-col items-center gap-3 pt-6">
-          <SideIconButton
-            active={panel === "suggested"}
-            label="Suggested outcome"
-            onClick={() => setPanel("suggested")}
-          >
+          <SideIconButton active={panel === "suggested"} label="Suggested outcome" onClick={() => setPanel("suggested")}>
             <IconBulb className="h-6 w-6 text-[#0B0F2A]" />
           </SideIconButton>
 
-          <SideIconButton
-            active={panel === "info"}
-            label="Application info"
-            onClick={() => setPanel("info")}
-          >
+          <SideIconButton active={panel === "info"} label="Application info" onClick={() => setPanel("info")}>
             <IconInfo className="h-6 w-6 text-[#0B0F2A]" />
           </SideIconButton>
 
-          <SideIconButton
-            active={panel === "comment"}
-            label="Comment"
-            onClick={() => setPanel("comment")}
-          >
+          <SideIconButton active={panel === "comment"} label="Comment" onClick={() => setPanel("comment")}>
             <IconComment className="h-6 w-6 text-[#0B0F2A]" />
           </SideIconButton>
 
-          <SideIconButton
-            active={panel === "decision"}
-            label="Decision"
-            onClick={() => setPanel("decision")}
-          >
+          <SideIconButton active={panel === "decision"} label="Decision" onClick={() => setPanel("decision")}>
             <IconTick className="h-6 w-6 text-[#0B0F2A]" />
           </SideIconButton>
 
-          <SideIconButton
-            active={panel === "version"}
-            label="Version control"
-            onClick={() => setPanel("version")}
-          >
+          <SideIconButton active={panel === "version"} label="Version control" onClick={() => setPanel("version")}>
             <IconBranch className="h-6 w-6 text-[#0B0F2A]" />
           </SideIconButton>
         </div>
 
         {/* RIGHT: panel */}
         <div className="w-[34%] rounded-3xl bg-[#F1F1F1] shadow-[0_14px_40px_rgba(0,0,0,0.08)] overflow-hidden">
-          {/* Panel header */}
           <div className="border-b border-black/10 bg-[#F1F1F1] px-6 py-5 text-center font-extrabold text-[#0B0F2A]">
             {panel === "suggested" && "Suggested Outcome"}
             {panel === "info" && "Application Info"}
@@ -591,34 +545,23 @@ export default function ApplicationReview() {
             {panel === "version" && "Version Control"}
           </div>
 
-          {/* Panel body */}
           <div className="p-6">
             {panel === "suggested" && (
               <div>
-                {/* outcome */}
                 <div className="flex items-center justify-center gap-3 border-b border-black/10 pb-6">
-                  <div className="text-3xl font-extrabold text-[#0B0F2A]">
-                    {systemOutcome}
-                  </div>
+                  <div className="text-3xl font-extrabold text-[#0B0F2A]">{systemOutcome}</div>
 
-                  {/* accept/reject icons */}
                   <div className="ml-auto flex items-center gap-2">
                     <button
                       onClick={onAcceptSystem}
-                      className={[
-                        "rounded-full p-2",
-                        userAcceptedSystem ? "bg-black/5" : "hover:bg-black/5",
-                      ].join(" ")}
+                      className={["rounded-full p-2", userAcceptedSystem ? "bg-black/5" : "hover:bg-black/5"].join(" ")}
                       title="Accept suggestion"
                     >
                       <IconTick className="h-5 w-5 text-[#0B0F2A]" />
                     </button>
                     <button
                       onClick={onRejectSystem}
-                      className={[
-                        "rounded-full p-2",
-                        !userAcceptedSystem ? "bg-black/5" : "hover:bg-black/5",
-                      ].join(" ")}
+                      className={["rounded-full p-2", !userAcceptedSystem ? "bg-black/5" : "hover:bg-black/5"].join(" ")}
                       title="Reject suggestion"
                     >
                       <IconCross className="h-5 w-5 text-[#0B0F2A]" />
@@ -626,11 +569,8 @@ export default function ApplicationReview() {
                   </div>
                 </div>
 
-                {/* reasonings */}
                 <div className="mt-6">
-                  <div className="text-sm font-extrabold text-[#0B0F2A]">
-                    Reasonings
-                  </div>
+                  <div className="text-sm font-extrabold text-[#0B0F2A]">Reasonings</div>
                   <div className="mt-1 text-xs text-[#0B0F2A]/60">
                     Values below are extracted by the system. Click an item to jump to the detected evidence.
                   </div>
@@ -650,7 +590,6 @@ export default function ApplicationReview() {
                       title="Similarity"
                       leftSub={mockLine("Requirement: ≥ 80%")}
                       rightValue={highlights.find((h) => h.key === "similarity")?.value || "-"}
-                      highlight
                       onClick={() => jumpToHighlight("h-sim")}
                     />
                     <ReasonCard
@@ -664,7 +603,6 @@ export default function ApplicationReview() {
                   </div>
                 </div>
 
-                {/* small edit hint */}
                 <div className="mt-6 rounded-2xl bg-white px-4 py-3 text-xs text-[#0B0F2A]/65">
                   Tip: Turn on <span className="font-bold">Edit Highlights</span> to mark evidence as correct/incorrect.
                   Regenerate to refresh the suggested outcome.
@@ -691,9 +629,7 @@ export default function ApplicationReview() {
               <div>
                 <div className="rounded-2xl bg-white p-4">
                   <div className="text-xs font-bold text-[#0B0F2A]/70">Selected evidence</div>
-                  <div className="mt-1 font-extrabold text-[#0B0F2A]">
-                    {selectedHighlight?.label || "—"}
-                  </div>
+                  <div className="mt-1 font-extrabold text-[#0B0F2A]">{selectedHighlight?.label || "—"}</div>
                   <div className="mt-2 text-xs text-[#0B0F2A]/60">
                     {selectedHighlight?.snippet || "Select a reasoning to comment on it."}
                   </div>
@@ -723,10 +659,7 @@ export default function ApplicationReview() {
                     className="h-24 w-full resize-none rounded-2xl border border-black/10 p-3 text-sm outline-none"
                   />
                   <div className="mt-3 flex justify-end">
-                    <button
-                      onClick={addComment}
-                      className="rounded-full bg-[#0B0F2A] px-6 py-3 text-sm font-extrabold text-white"
-                    >
+                    <button onClick={addComment} className="rounded-full bg-[#0B0F2A] px-6 py-3 text-sm font-extrabold text-white">
                       Post
                     </button>
                   </div>
@@ -740,11 +673,7 @@ export default function ApplicationReview() {
                   <div className="text-sm font-extrabold text-[#0B0F2A]">Your decision:</div>
 
                   <div className="mt-4 flex items-center gap-3">
-                    <img
-                      src="https://i.pravatar.cc/100?img=32"
-                      alt="You"
-                      className="h-10 w-10 rounded-full"
-                    />
+                    <img src="https://i.pravatar.cc/100?img=32" alt="You" className="h-10 w-10 rounded-full" />
 
                     <select
                       value={myDecision}
@@ -768,9 +697,7 @@ export default function ApplicationReview() {
                 </div>
 
                 <div className="mt-6 rounded-2xl bg-white p-5">
-                  <div className="text-sm font-extrabold text-[#0B0F2A]">
-                    Other subject lecturers:
-                  </div>
+                  <div className="text-sm font-extrabold text-[#0B0F2A]">Other subject lecturers:</div>
 
                   <div className="mt-4 space-y-4">
                     {otherSL.map((sl) => (
@@ -800,9 +727,7 @@ export default function ApplicationReview() {
 
             {panel === "version" && (
               <div>
-                <div className="text-sm text-[#0B0F2A]/70">
-                  Track changes made to highlights / decisions.
-                </div>
+                <div className="text-sm text-[#0B0F2A]/70">Track changes made to highlights / decisions.</div>
 
                 <div className="mt-5 space-y-3">
                   {initialVersions.map((v) => (
@@ -860,7 +785,7 @@ function InfoRow({ label, value }) {
   );
 }
 
-function ReasonCard({ index, title, leftSub, rightValue, active, onClick, highlight = false }) {
+function ReasonCard({ index, title, leftSub, rightValue, active, onClick }) {
   return (
     <button
       onClick={onClick}
@@ -895,10 +820,9 @@ function HighlightLine({ active, label, tooltip, editable, onToggle }) {
         ].join(" ")}
       >
         <span className="font-semibold">{label}</span>
+
         <span className="group relative ml-2 inline-flex items-center">
           <span className="text-[#0B0F2A]/40">ⓘ</span>
-
-          {/* tooltip */}
           <span className="pointer-events-none absolute left-full top-1/2 ml-3 hidden -translate-y-1/2 rounded-2xl bg-[#0B0F2A] px-4 py-3 text-xs text-white shadow-lg group-hover:block w-[260px]">
             {tooltip}
           </span>
