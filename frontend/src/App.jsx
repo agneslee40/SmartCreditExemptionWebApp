@@ -26,6 +26,8 @@ function App() {
           <Route path="/details/:id" element={<ApplicationDetails />} />
           <Route path="/application/:id" element={<ApplicationDetails />} />
           <Route path="/reference" element={<ReferenceCases />} />
+          <Route path="/applications/:id" element={<ApplicationDetails />} />
+          <Route path="/applications/:id/review" element={<ApplicationReview />} />
         </Route>
       </Routes>
     </BrowserRouter>
