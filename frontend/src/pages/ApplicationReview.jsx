@@ -384,104 +384,102 @@ export default function ApplicationReview() {
   return (
     <div className="bg-white">
       {/* Top line: back + title + doc dropdown + similarity + page counter */}
-      <div className="flex items-start justify-between">
-        <div className="flex items-start gap-6">
-          <button
-            onClick={() => navigate("/tasks")}
-            className="mt-1 rounded-xl p-2 text-[#0B0F2A] hover:bg-black/5"
-            title="Back"
-          >
-            <IconBack className="h-8 w-8" />
-          </button>
+      {/* Header: ONE ROW like Figma */}
+      <div className="flex items-center gap-6">
+        {/* Back */}
+        <button
+          onClick={() => navigate("/tasks")}
+          className="rounded-xl p-2 text-[#0B0F2A] hover:bg-black/5"
+          title="Back"
+        >
+          <IconBack className="h-8 w-8" />
+        </button>
 
-          <div>
-            <h1 className="text-5xl font-extrabold tracking-tight text-[#0B0F2A]">
-              Application Review
-            </h1>
+        {/* Title + controls in ONE LINE */}
+        <div className="flex w-full items-center gap-6">
+          <h1 className="text-5xl font-extrabold tracking-tight text-[#0B0F2A] whitespace-nowrap">
+            Application Review
+          </h1>
 
-            {/* Controls row under title */}
-            <div className="mt-4 flex items-center gap-6">
-              {/* Doc dropdown (mock) */}
-              <div className="relative">
-                <select
-                  value={docId}
-                  onChange={(e) => {
-                    setDocId(e.target.value);
-                    setPage(1);
-                  }}
-                  className="appearance-none rounded-2xl bg-[#EFEFEF] px-5 py-3 pr-10 text-sm font-semibold text-[#0B0F2A] outline-none"
-                >
-                  {DOCS.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.name}
-                    </option>
-                  ))}
-                </select>
-                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#0B0F2A]/70">
-                  <IconChevronDown className="h-5 w-5" />
-                </span>
-              </div>
+          {/* Doc dropdown */}
+          <div className="relative">
+            <select
+              value={docId}
+              onChange={(e) => {
+                setDocId(e.target.value);
+                setPage(1);
+              }}
+              className="appearance-none rounded-2xl bg-[#EFEFEF] px-5 py-3 pr-10 text-sm font-semibold text-[#0B0F2A] outline-none"
+            >
+              {DOCS.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name}
+                </option>
+              ))}
+            </select>
+            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#0B0F2A]/70">
+              <IconChevronDown className="h-5 w-5" />
+            </span>
+          </div>
 
-              {/* Similarity badge */}
-              <div className="flex items-center gap-3">
-                <span className="text-sm font-bold text-[#0B0F2A]">Similarity</span>
-                <span className="rounded-xl bg-[#EFEFEF] px-3 py-2 text-sm font-extrabold text-[#0B0F2A]">
-                  {similarityScore}
-                </span>
-              </div>
+          {/* Similarity */}
+          <div className="flex items-center gap-3 whitespace-nowrap">
+            <span className="text-sm font-bold text-[#0B0F2A]">Similarity</span>
+            <span className="rounded-xl bg-[#EFEFEF] px-3 py-2 text-sm font-extrabold text-[#0B0F2A]">
+              {similarityScore}
+            </span>
+          </div>
 
-              {/* Page counter */}
-              <div className="flex items-center gap-3 text-sm font-bold text-[#0B0F2A]">
-                <button
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  className="rounded-xl px-3 py-2 hover:bg-black/5"
-                  aria-label="Previous page"
-                >
-                  ‹
-                </button>
-                <span className="min-w-[70px] text-center">
-                  {page} of {totalPages}
-                </span>
-                <button
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  className="rounded-xl px-3 py-2 hover:bg-black/5"
-                  aria-label="Next page"
-                >
-                  ›
-                </button>
-              </div>
+          {/* Page counter */}
+          <div className="ml-auto flex items-center gap-3 text-sm font-bold text-[#0B0F2A] whitespace-nowrap">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              className="rounded-xl px-3 py-2 hover:bg-black/5"
+              aria-label="Previous page"
+            >
+              ‹
+            </button>
 
-              {/* Edit mode toggle + regenerate */}
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => setEditMode((v) => !v)}
-                  className={[
-                    "rounded-2xl px-4 py-3 text-sm font-extrabold",
-                    editMode ? "bg-[#0B0F2A] text-white" : "bg-[#EFEFEF] text-[#0B0F2A]",
-                  ].join(" ")}
-                >
-                  <span className="inline-flex items-center gap-2">
-                    <IconPencil className="h-5 w-5" />
-                    {editMode ? "Editing Highlights" : "Edit Highlights"}
-                  </span>
-                </button>
+            <span className="min-w-[70px] text-center">
+              {page} of {totalPages}
+            </span>
 
-                {dirty && (
-                  <button
-                    onClick={() => setConfirm({ open: true, type: "regen" })}
-                    className="rounded-2xl bg-[#FF6B2C] px-4 py-3 text-sm font-extrabold text-black shadow-sm hover:shadow-md"
-                  >
-                    Regenerate suggested outcome
-                  </button>
-                )}
-              </div>
-            </div>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              className="rounded-xl px-3 py-2 hover:bg-black/5"
+              aria-label="Next page"
+            >
+              ›
+            </button>
           </div>
         </div>
-
-        {/* (Optional) you can add tiny right-side content here if needed later */}
-        <div />
       </div>
+
+      {/* SECOND ROW (new feature): Edit Highlights + Regenerate */}
+      <div className="mt-5 flex items-center justify-end gap-3">
+        <button
+          onClick={() => setEditMode((v) => !v)}
+          className={[
+            "rounded-2xl px-4 py-3 text-sm font-extrabold",
+            editMode ? "bg-[#0B0F2A] text-white" : "bg-[#EFEFEF] text-[#0B0F2A]",
+          ].join(" ")}
+        >
+          <span className="inline-flex items-center gap-2">
+            <IconPencil className="h-5 w-5" />
+            {editMode ? "Editing Highlights" : "Edit Highlights"}
+          </span>
+        </button>
+
+        {dirty && (
+          <button
+            onClick={() => setConfirm({ open: true, type: "regen" })}
+            className="rounded-2xl bg-[#FF6B2C] px-4 py-3 text-sm font-extrabold text-black shadow-sm hover:shadow-md"
+          >
+            Regenerate suggested outcome
+          </button>
+        )}
+      </div>
+
 
       {/* Main layout: Viewer | vertical icons | right panel */}
       <div className="mt-10 flex gap-8">
