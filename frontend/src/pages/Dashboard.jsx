@@ -35,7 +35,7 @@ const pendingActions = [
   },
 ];
 
-// Add lecturer contact info here (so Remind knows who to email)
+// Waiting on Subject Lecturers (each can have different lecturer email)
 const waitingOnSL = [
   {
     id: "A001",
@@ -46,15 +46,25 @@ const waitingOnSL = [
     institution: "Wesley Methodist School Kuala Lumpur (INTERNATIONAL)",
     subject: "MPU 3213 Malay Language for Communication",
     type: "Credit Exemption",
-
-    // ✅ for Remind
     lecturerName: "Subject Lecturer",
-    lecturerEmail: "sl@sunway.edu.my",
+    lecturerEmail: "sl1@sunway.edu.my",
+  },
+  {
+    id: "A002",
+    date: "7th January 2025",
+    studentId: "22115738",
+    session: "202301 | 1",
+    prevQual: "Bahasa Melayu",
+    institution: "Wesley Methodist School Kuala Lumpur (INTERNATIONAL)",
+    subject: "MPU 3213 Malay Language for Communication",
+    type: "Credit Transfer",
+    lecturerName: "Dr. Tan",
+    lecturerEmail: "drtan@sunway.edu.my",
   },
 ];
 
 function buildMailtoForReminder(row) {
-  const to = row.lecturerEmail || "";
+  const to = (row.lecturerEmail || "").trim();
   const appLink = `${window.location.origin}/tasks/applications/${row.id}/review`;
 
   const subject = `[Reminder] Action needed for Application ${row.id} (${row.type})`;
@@ -62,7 +72,7 @@ function buildMailtoForReminder(row) {
   const body = `
 Hi ${row.lecturerName || "Dr./Mr./Ms."},
 
-This is a gentle reminder to review and take action on the following credit exemption/transfer application:
+This is a gentle reminder to review and take action on the following application:
 
 Application ID: ${row.id}
 Date Submitted: ${row.date}
@@ -76,15 +86,13 @@ Quick link to review:
 ${appLink}
 
 Thank you.
-`;
+`.trim();
 
-  // mailto expects URL-encoded subject/body
-  const params = new URLSearchParams({
-    subject,
-    body: body.trim(),
-  });
+  // IMPORTANT: use encodeURIComponent so spaces become %20 (not +)
+  const qs = `subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 
-  return `mailto:${encodeURIComponent(to)}?${params.toString()}`;
+  // You can leave "to" unencoded, but encoding is safer if there are weird chars
+  return `mailto:${encodeURIComponent(to)}?${qs}`;
 }
 
 function SectionCard({ title, countBadge, rows, actionLabel, onActionClick }) {
@@ -142,7 +150,6 @@ function SectionCard({ title, countBadge, rows, actionLabel, onActionClick }) {
           </table>
         </div>
 
-        {/* optional helper note */}
         {title === "Waiting on Subject Lecturers" && (
           <div className="mt-4 text-xs text-[#0B0F2A]/60">
             Tip: “Remind” opens your default email app with a pre-filled draft.
@@ -161,8 +168,11 @@ export default function Dashboard() {
   };
 
   const handleRemind = (row) => {
-    const mailto = buildMailtoForReminder(row);
-    window.location.href = mailto;
+    if (!row.lecturerEmail) {
+      alert("No lecturer email found for this application.");
+      return;
+    }
+    window.location.href = buildMailtoForReminder(row);
   };
 
   return (
