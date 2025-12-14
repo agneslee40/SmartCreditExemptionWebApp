@@ -1,18 +1,12 @@
 // src/pages/ApplicationReview.jsx
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 /* ------------------ tiny inline icons (no library) ------------------ */
 function IconBack({ className = "" }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path
-        d="M15 18l-6-6 6-6"
-        stroke="currentColor"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+      <path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -26,13 +20,7 @@ function IconChevronDown({ className = "" }) {
 function IconTick({ className = "" }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path
-        d="M20 6 9 17l-5-5"
-        stroke="currentColor"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+      <path d="M20 6 9 17l-5-5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -73,11 +61,7 @@ function IconInfo({ className = "" }) {
     <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <path d="M12 8h.01" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
       <path d="M11 12h1v6h1" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
-      <path
-        d="M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Z"
-        stroke="currentColor"
-        strokeWidth="2"
-      />
+      <path d="M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Z" stroke="currentColor" strokeWidth="2" />
     </svg>
   );
 }
@@ -107,12 +91,63 @@ function IconBranch({ className = "" }) {
     </svg>
   );
 }
+function IconUndo({ className = "" }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M9 14 4 9l5-5" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" />
+      <path
+        d="M20 20a8 8 0 0 0-8-8H4"
+        stroke="currentColor"
+        strokeWidth="2.3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+function IconRedo({ className = "" }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M15 4l5 5-5 5" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" />
+      <path
+        d="M4 20a8 8 0 0 1 8-8h8"
+        stroke="currentColor"
+        strokeWidth="2.3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+function IconPlus({ className = "" }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" />
+    </svg>
+  );
+}
+function IconTrash({ className = "" }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M4 7h16" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" />
+      <path d="M10 11v7M14 11v7" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" />
+      <path
+        d="M6 7l1 14h10l1-14"
+        stroke="currentColor"
+        strokeWidth="2.3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M9 7V4h6v3" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" />
+    </svg>
+  );
+}
 
 /* ------------------ small UI shells ------------------ */
 function Toast({ message, onClose }) {
   if (!message) return null;
   return (
-    <div className="fixed bottom-6 right-6 z-50">
+    <div className="fixed bottom-6 right-6 z-[80]">
       <div className="rounded-2xl bg-[#0B0F2A] px-5 py-4 text-white shadow-lg flex items-start gap-3">
         <div className="mt-0.5">
           <IconTick className="h-5 w-5" />
@@ -129,10 +164,18 @@ function Toast({ message, onClose }) {
   );
 }
 
-function ConfirmModal({ open, title, body, onCancel, onConfirm }) {
+function ConfirmModal({
+  open,
+  title,
+  body,
+  onCancel,
+  onConfirm,
+  cancelLabel = "Cancel",
+  confirmLabel = "Yes",
+}) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-6">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 px-6">
       <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-xl">
         <h3 className="text-xl font-extrabold text-[#0B0F2A]">{title}</h3>
         <p className="mt-3 text-sm text-[#0B0F2A]/75">{body}</p>
@@ -141,13 +184,38 @@ function ConfirmModal({ open, title, body, onCancel, onConfirm }) {
             onClick={onCancel}
             className="rounded-full bg-[#EFEFEF] px-6 py-3 font-semibold text-[#0B0F2A]"
           >
-            Cancel
+            {cancelLabel}
           </button>
           <button
             onClick={onConfirm}
             className="rounded-full bg-[#0B0F2A] px-6 py-3 font-semibold text-white"
           >
-            Yes
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LoadingOverlay({ open, title, body, onCancel }) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-[75] bg-white/70 backdrop-blur-[2px] flex items-center justify-center px-6">
+      <div className="w-full max-w-md rounded-3xl bg-white shadow-xl border border-black/10 p-6">
+        <div className="flex items-center gap-3">
+          <div className="h-8 w-8 rounded-full border-4 border-black/10 border-t-[#0B0F2A] animate-spin" />
+          <div>
+            <div className="text-lg font-extrabold text-[#0B0F2A]">{title}</div>
+            <div className="mt-1 text-sm text-[#0B0F2A]/70">{body}</div>
+          </div>
+        </div>
+        <div className="mt-6 flex justify-end">
+          <button
+            onClick={onCancel}
+            className="rounded-full bg-[#EFEFEF] px-6 py-3 font-semibold text-[#0B0F2A]"
+          >
+            Cancel
           </button>
         </div>
       </div>
@@ -235,12 +303,19 @@ export default function ApplicationReview() {
   const navigate = useNavigate();
   const { id } = useParams();
 
+  const viewerRef = useRef(null);
+
   const [panel, setPanel] = useState("suggested"); // suggested | info | comment | decision | version
   const [docId, setDocId] = useState(DOCS[0].id);
   const [page, setPage] = useState(1);
   const [goTo, setGoTo] = useState("");
 
   const [highlights, setHighlights] = useState(initialHighlights);
+  const highlightsRef = useRef(highlights);
+  useEffect(() => {
+    highlightsRef.current = highlights;
+  }, [highlights]);
+
   const [selectedHighlightId, setSelectedHighlightId] = useState("h-sim");
   const selectedHighlight = useMemo(
     () => highlights.find((h) => h.id === selectedHighlightId),
@@ -253,8 +328,25 @@ export default function ApplicationReview() {
   const [editMode, setEditMode] = useState(false);
   const [dirty, setDirty] = useState(false);
 
+  // autosave status
+  const [saveStatus, setSaveStatus] = useState("Saved");
+  const saveTimerRef = useRef(null);
+
+  // undo/redo
+  const [history, setHistory] = useState({ past: [], future: [] });
+
+  // add highlight mode
+  const [addMode, setAddMode] = useState(false);
+  const [pendingAdd, setPendingAdd] = useState(null); // { text, rect }
+
+  // confirm modal usage
+  const [confirm, setConfirm] = useState({ open: false, type: "" }); // accept | reject | regen | exitRegen
+
+  // regeneration overlay
+  const [regenLoading, setRegenLoading] = useState(false);
+  const regenTimerRef = useRef(null);
+
   const [toast, setToast] = useState("");
-  const [confirm, setConfirm] = useState({ open: false, type: "" }); // accept | reject | regen
 
   const [comments, setComments] = useState([
     { id: 1, highlightId: "h-sim", by: "Programme Leader", at: "2025-11-20 10:20", text: "Similarity looks valid. Check if learning outcomes align." },
@@ -267,36 +359,100 @@ export default function ApplicationReview() {
   const totalPages = currentDoc.pages;
   const similarityScore = "81%";
 
+  /* --------- helpers --------- */
+  const markDirtyAndAutosave = () => {
+    setDirty(true);
+    setSaveStatus("Saving…");
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => setSaveStatus("Saved"), 700);
+  };
+
+  const commitHighlights = (nextHighlights) => {
+    setHistory((h) => ({ past: [...h.past, highlightsRef.current], future: [] }));
+    setHighlights(nextHighlights);
+    markDirtyAndAutosave();
+  };
+
+  const undo = () => {
+    setHistory((h) => {
+      if (h.past.length === 0) return h;
+      const current = highlightsRef.current;
+      const previous = h.past[h.past.length - 1];
+      setHighlights(previous);
+      setDirty(true);
+      setSaveStatus("Saved");
+      return { past: h.past.slice(0, -1), future: [current, ...h.future] };
+    });
+  };
+
+  const redo = () => {
+    setHistory((h) => {
+      if (h.future.length === 0) return h;
+      const current = highlightsRef.current;
+      const next = h.future[0];
+      setHighlights(next);
+      setDirty(true);
+      setSaveStatus("Saved");
+      return { past: [...h.past, current], future: h.future.slice(1) };
+    });
+  };
+
   const jumpToHighlight = (hid) => {
     const h = highlights.find((x) => x.id === hid);
-    if (!h) return;
+    if (!h) {
+      setToast("Highlight not found (it may have been removed).");
+      return;
+    }
     setSelectedHighlightId(hid);
     setDocId(h.docId);
     setPage(h.page);
     setPanel("suggested");
   };
 
-  const toggleHighlightCorrectness = (hid) => {
-    setHighlights((prev) =>
-      prev.map((h) =>
-        h.id === hid
-          ? { ...h, snippet: h.snippet.endsWith(" ✓") ? h.snippet.replace(" ✓", "") : h.snippet + " ✓" }
-          : h
-      )
-    );
-    setDirty(true);
-    setToast("Highlight updated. Regenerate to refresh outcome.");
+  const removeHighlight = (hid) => {
+    const exists = highlights.find((h) => h.id === hid);
+    if (!exists) return;
+
+    const next = highlights.filter((h) => h.id !== hid);
+    commitHighlights(next);
+
+    if (selectedHighlightId === hid) {
+      setSelectedHighlightId(next[0]?.id || "");
+    }
+    setToast("Highlight removed.");
   };
 
-  const regenerate = () => {
-    const sim = highlights.find((h) => h.key === "similarity");
-    const simOk = !!sim && sim.snippet.endsWith(" ✓");
-    const newOutcome = simOk ? "Approve" : "Reject";
-    setSystemOutcome(newOutcome);
-    setUserAcceptedSystem(true);
-    setDirty(false);
-    setToast("Suggested outcome regenerated.");
+  const computeOutcome = (hls) => {
+    // simple prototype rule:
+    // Approve only if grade + similarity + credit highlights still exist.
+    const hasGrade = !!hls.find((h) => h.key === "grade");
+    const hasSim = !!hls.find((h) => h.key === "similarity");
+    const hasCred = !!hls.find((h) => h.key === "credit");
+    return hasGrade && hasSim && hasCred ? "Approve" : "Reject";
+  };
+
+  const startRegenerate = () => {
     setConfirm({ open: false, type: "" });
+    setRegenLoading(true);
+
+    // simulate API job
+    if (regenTimerRef.current) clearTimeout(regenTimerRef.current);
+    regenTimerRef.current = setTimeout(() => {
+      const newOutcome = computeOutcome(highlightsRef.current);
+      setSystemOutcome(newOutcome);
+      setUserAcceptedSystem(true);
+      setDirty(false);
+      setHistory({ past: [], future: [] });
+      setToast("Suggested outcome regenerated.");
+      setRegenLoading(false);
+    }, 1300);
+  };
+
+  const cancelRegenerate = () => {
+    if (regenTimerRef.current) clearTimeout(regenTimerRef.current);
+    setRegenLoading(false);
+    setToast("Regeneration cancelled.");
+    // keep dirty = true so button stays
   };
 
   const onAcceptSystem = () => setConfirm({ open: true, type: "accept" });
@@ -311,8 +467,19 @@ export default function ApplicationReview() {
       setUserAcceptedSystem(false);
       setToast("You rejected the system suggestion.");
     }
-    if (confirm.type === "regen") regenerate();
+    if (confirm.type === "regen") startRegenerate();
+    if (confirm.type === "exitRegen") startRegenerate();
     setConfirm({ open: false, type: "" });
+  };
+
+  const exitEditMode = () => {
+    setAddMode(false);
+    setPendingAdd(null);
+    setEditMode(false);
+
+    if (dirty) {
+      setConfirm({ open: true, type: "exitRegen" });
+    }
   };
 
   const addComment = () => {
@@ -339,6 +506,239 @@ export default function ApplicationReview() {
     const clamped = Math.max(1, Math.min(totalPages, n));
     setPage(clamped);
     setGoTo("");
+  };
+
+  /* --------- add highlight selection handling --------- */
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      if (e.key === "Escape") {
+        setAddMode(false);
+        setPendingAdd(null);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  const handleMouseUpForAdd = () => {
+    if (!editMode || !addMode) return;
+
+    const sel = window.getSelection?.();
+    const text = sel?.toString?.().trim() || "";
+    if (!text || text.length < 2) return;
+
+    // must be inside viewer
+    const container = viewerRef.current;
+    if (!container) return;
+
+    const anchorNode = sel?.anchorNode;
+    if (!anchorNode) return;
+
+    // anchorNode might be a text node; check parent containment
+    const anchorEl = anchorNode.nodeType === 3 ? anchorNode.parentElement : anchorNode;
+    if (!anchorEl || !container.contains(anchorEl)) return;
+
+    const range = sel.getRangeAt?.(0);
+    if (!range) return;
+
+    const rect = range.getBoundingClientRect();
+    if (!rect || rect.width === 0 || rect.height === 0) return;
+
+    setPendingAdd({
+      text,
+      rect: { x: rect.left, y: rect.top, w: rect.width, h: rect.height },
+    });
+  };
+
+  const confirmAddHighlight = () => {
+    if (!pendingAdd?.text) return;
+
+    const newId = `h-manual-${Date.now()}`;
+    const next = [
+      ...highlights,
+      {
+        id: newId,
+        key: "manual",
+        label: "Manual Highlight",
+        docId,
+        page,
+        value: "-",
+        requirement: "Added by reviewer",
+        snippet: pendingAdd.text,
+      },
+    ];
+
+    commitHighlights(next);
+    setSelectedHighlightId(newId);
+    setPendingAdd(null);
+    setAddMode(false);
+    window.getSelection?.()?.removeAllRanges?.();
+    setToast("Highlight added.");
+  };
+
+  const cancelAddHighlight = () => {
+    setPendingAdd(null);
+    setAddMode(false);
+    window.getSelection?.()?.removeAllRanges?.();
+  };
+
+  /* --------- document content rendering (mock but tied to highlights state) --------- */
+  const hlByKey = (key) => highlights.find((h) => h.key === key);
+  const hlSim = hlByKey("similarity");
+  const hlCred = hlByKey("credit");
+  const hlGrade = hlByKey("grade");
+
+  const manualOnThisPage = useMemo(
+    () => highlights.filter((h) => h.key === "manual" && h.docId === docId && h.page === page),
+    [highlights, docId, page]
+  );
+
+  const renderDocBlocks = () => {
+    // Lightweight mock that matches your prototype pages
+    if (docId === "sunway") {
+      return (
+        <>
+          <div className="text-center font-bold text-[#0B0F2A]">Online Course Syllabus</div>
+          <div className="mt-4 border-t border-black/10" />
+
+          <div className="mt-6 space-y-6 text-sm text-[#0B0F2A]/85">
+            {page === 1 && hlSim && (
+              <HighlightPill
+                highlight={hlSim}
+                active={selectedHighlightId === hlSim.id}
+                tooltip="Similar to Sunway syllabus: topics match (HTML, CSS, JS fundamentals)"
+                editable={editMode}
+                onRemove={() => removeHighlight(hlSim.id)}
+                onClick={() => setSelectedHighlightId(hlSim.id)}
+              />
+            )}
+
+            <div className="h-3" />
+            <div className="font-semibold text-[#0B0F2A]">Instructor Information</div>
+            <div className="text-[#0B0F2A]/70">
+              Email Address: (hidden) <span className="select-none">—</span>{" "}
+              <span className="text-[#0B0F2A]/55">
+                Please contact the department if you need verification of instructor details.
+              </span>
+            </div>
+
+            {page === 2 && hlCred && (
+              <HighlightPill
+                highlight={hlCred}
+                active={selectedHighlightId === hlCred.id}
+                tooltip="Minimum required: 3 credit hours"
+                editable={editMode}
+                onRemove={() => removeHighlight(hlCred.id)}
+                onClick={() => setSelectedHighlightId(hlCred.id)}
+              />
+            )}
+
+            {manualOnThisPage.length > 0 && (
+              <div className="mt-2 rounded-2xl border border-black/10 bg-white p-4">
+                <div className="text-xs font-extrabold text-[#0B0F2A]/70">Added highlights</div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {manualOnThisPage.map((mh) => (
+                    <HighlightPill
+                      key={mh.id}
+                      highlight={mh}
+                      active={selectedHighlightId === mh.id}
+                      tooltip="Added by reviewer"
+                      editable={editMode}
+                      onRemove={() => removeHighlight(mh.id)}
+                      onClick={() => setSelectedHighlightId(mh.id)}
+                      compact
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="mt-10 text-xs text-[#0B0F2A]/45">
+              (Mock viewer for prototype — later replace with real PDF rendering + coordinates.)
+            </div>
+          </div>
+        </>
+      );
+    }
+
+    if (docId === "transcript") {
+      return (
+        <>
+          <div className="text-center font-bold text-[#0B0F2A]">Academic Transcript</div>
+          <div className="mt-4 border-t border-black/10" />
+
+          <div className="mt-6 space-y-6 text-sm text-[#0B0F2A]/85">
+            <div className="text-[#0B0F2A]/70">
+              Student performance summary (mock). Select text to add a missing highlight.
+            </div>
+
+            {page === 1 && hlGrade && (
+              <HighlightPill
+                highlight={hlGrade}
+                active={selectedHighlightId === hlGrade.id}
+                tooltip="Minimum required: ≥ C"
+                editable={editMode}
+                onRemove={() => removeHighlight(hlGrade.id)}
+                onClick={() => setSelectedHighlightId(hlGrade.id)}
+              />
+            )}
+
+            {manualOnThisPage.length > 0 && (
+              <div className="mt-2 rounded-2xl border border-black/10 bg-white p-4">
+                <div className="text-xs font-extrabold text-[#0B0F2A]/70">Added highlights</div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {manualOnThisPage.map((mh) => (
+                    <HighlightPill
+                      key={mh.id}
+                      highlight={mh}
+                      active={selectedHighlightId === mh.id}
+                      tooltip="Added by reviewer"
+                      editable={editMode}
+                      onRemove={() => removeHighlight(mh.id)}
+                      onClick={() => setSelectedHighlightId(mh.id)}
+                      compact
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="mt-10 text-xs text-[#0B0F2A]/45">(Mock transcript viewer.)</div>
+          </div>
+        </>
+      );
+    }
+
+    // fallback
+    return (
+      <>
+        <div className="text-center font-bold text-[#0B0F2A]">Document Preview</div>
+        <div className="mt-4 border-t border-black/10" />
+        <div className="mt-6 text-sm text-[#0B0F2A]/70">
+          This document has no mock highlights yet. Use <span className="font-bold">Edit Highlights</span> to add one.
+        </div>
+
+        {manualOnThisPage.length > 0 && (
+          <div className="mt-6 rounded-2xl border border-black/10 bg-white p-4">
+            <div className="text-xs font-extrabold text-[#0B0F2A]/70">Added highlights</div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {manualOnThisPage.map((mh) => (
+                <HighlightPill
+                  key={mh.id}
+                  highlight={mh}
+                  active={selectedHighlightId === mh.id}
+                  tooltip="Added by reviewer"
+                  editable={editMode}
+                  onRemove={() => removeHighlight(mh.id)}
+                  onClick={() => setSelectedHighlightId(mh.id)}
+                  compact
+                />
+              ))}
+            </div>
+          </div>
+        )}
+      </>
+    );
   };
 
   return (
@@ -391,22 +791,70 @@ export default function ApplicationReview() {
           </div>
         </div>
 
-        {/* Right side: Edit Highlights + Regenerate (top-right like you wanted) */}
+        {/* Right side: Edit Highlights + Regenerate (top-right) */}
         <div className="flex items-center gap-3">
-          <button
-            onClick={() => setEditMode((v) => !v)}
-            className={[
-              "rounded-2xl px-4 py-3 text-sm font-extrabold",
-              editMode ? "bg-[#0B0F2A] text-white" : "bg-[#EFEFEF] text-[#0B0F2A]",
-            ].join(" ")}
-          >
-            <span className="inline-flex items-center gap-2">
-              <IconPencil className="h-5 w-5" />
-              {editMode ? "Editing Highlights" : "Edit Highlights"}
-            </span>
-          </button>
+          {!editMode ? (
+            <button
+              onClick={() => {
+                setEditMode(true);
+                setAddMode(false);
+                setPendingAdd(null);
+                setSaveStatus("Saved");
+              }}
+              className="rounded-2xl bg-[#EFEFEF] px-4 py-3 text-sm font-extrabold text-[#0B0F2A]"
+            >
+              <span className="inline-flex items-center gap-2">
+                <IconPencil className="h-5 w-5" />
+                Edit Highlights
+              </span>
+            </button>
+          ) : (
+            <>
+              <div className="rounded-2xl bg-[#0B0F2A] px-4 py-3 text-sm font-extrabold text-white">
+                <span className="inline-flex items-center gap-2">
+                  <IconPencil className="h-5 w-5" />
+                  Editing Highlights
+                </span>
+              </div>
 
-          {dirty && (
+              <div className="rounded-2xl bg-[#EFEFEF] px-4 py-3 text-sm font-extrabold text-[#0B0F2A] whitespace-nowrap">
+                {saveStatus}
+              </div>
+
+              <button
+                onClick={undo}
+                disabled={history.past.length === 0}
+                className={[
+                  "rounded-2xl px-3 py-3 text-sm font-extrabold border border-black/10",
+                  history.past.length === 0 ? "bg-[#EFEFEF] text-[#0B0F2A]/35" : "bg-white text-[#0B0F2A] hover:bg-black/[0.03]",
+                ].join(" ")}
+                title="Undo"
+              >
+                <IconUndo className="h-5 w-5" />
+              </button>
+
+              <button
+                onClick={redo}
+                disabled={history.future.length === 0}
+                className={[
+                  "rounded-2xl px-3 py-3 text-sm font-extrabold border border-black/10",
+                  history.future.length === 0 ? "bg-[#EFEFEF] text-[#0B0F2A]/35" : "bg-white text-[#0B0F2A] hover:bg-black/[0.03]",
+                ].join(" ")}
+                title="Redo"
+              >
+                <IconRedo className="h-5 w-5" />
+              </button>
+
+              <button
+                onClick={exitEditMode}
+                className="rounded-2xl bg-[#EFEFEF] px-4 py-3 text-sm font-extrabold text-[#0B0F2A]"
+              >
+                Exit
+              </button>
+            </>
+          )}
+
+          {dirty && !editMode && (
             <button
               onClick={() => setConfirm({ open: true, type: "regen" })}
               className="rounded-2xl bg-[#FF6B2C] px-4 py-3 text-sm font-extrabold text-black shadow-sm hover:shadow-md"
@@ -421,54 +869,83 @@ export default function ApplicationReview() {
       <div className="mt-10 flex gap-8">
         {/* LEFT: Document viewer mock */}
         <div className="relative w-[62%] rounded-3xl bg-white shadow-[0_14px_40px_rgba(0,0,0,0.08)]">
-          <div className="h-[70vh] overflow-auto rounded-3xl p-6">
+          <div
+            ref={viewerRef}
+            className="h-[70vh] overflow-auto rounded-3xl p-6"
+            onMouseUp={handleMouseUpForAdd}
+          >
             <div className="text-sm font-semibold text-[#0B0F2A]/70">
               {currentDoc.name} — Page {page}
             </div>
 
-            <div className="mt-4 rounded-2xl border border-black/10 bg-white p-6">
-              <div className="text-center font-bold text-[#0B0F2A]">Online Course Syllabus</div>
-              <div className="mt-4 border-t border-black/10" />
-
-              <div className="mt-6 space-y-6 text-sm text-[#0B0F2A]/85">
-                <HighlightLine
-                  active={selectedHighlight?.key === "similarity"}
-                  label="CST 2309: Introduction to Web Programming"
-                  tooltip="Similar to Sunway syllabus: topics match (HTML, CSS, JS fundamentals)"
-                  editable={editMode}
-                  onToggle={() => toggleHighlightCorrectness("h-sim")}
-                />
-
-                <div className="h-3" />
-                <div className="font-semibold text-[#0B0F2A]">Instructor Information</div>
-                <div className="text-[#0B0F2A]/70">Email Address: (hidden)</div>
-
-                <HighlightLine
-                  active={selectedHighlight?.key === "credit"}
-                  label="Credit Hours: 4"
-                  tooltip="Minimum required: 3 credit hours"
-                  editable={editMode}
-                  onToggle={() => toggleHighlightCorrectness("h-cred")}
-                />
-
-                <div className="h-6" />
-
-                <HighlightLine
-                  active={selectedHighlight?.key === "grade"}
-                  label="Grade: A+"
-                  tooltip="Minimum required: ≥ C"
-                  editable={editMode}
-                  onToggle={() => toggleHighlightCorrectness("h-grade")}
-                />
-
-                <div className="mt-10 text-xs text-[#0B0F2A]/45">
-                  (Mock viewer for prototype — later replace with real PDF rendering + coordinates.)
-                </div>
+            {/* Add highlight controls (top-right of left viewer) */}
+            {editMode && (
+              <div className="sticky top-0 z-30 mt-3 flex justify-end">
+                <button
+                  onClick={() => {
+                    if (addMode) {
+                      setAddMode(false);
+                      setPendingAdd(null);
+                      window.getSelection?.()?.removeAllRanges?.();
+                    } else {
+                      setAddMode(true);
+                      setPendingAdd(null);
+                      setToast("Select text in the document to add a highlight.");
+                    }
+                  }}
+                  className={[
+                    "rounded-2xl px-4 py-3 text-sm font-extrabold shadow-sm border border-black/10",
+                    addMode ? "bg-[#0B0F2A] text-white" : "bg-white text-[#0B0F2A] hover:bg-black/[0.03]",
+                  ].join(" ")}
+                  title="Add highlight"
+                >
+                  <span className="inline-flex items-center gap-2">
+                    <IconPlus className="h-5 w-5" />
+                    {addMode ? "Select text…" : "Add highlight"}
+                  </span>
+                </button>
               </div>
+            )}
+
+            {/* Fake document page */}
+            <div className="mt-4 rounded-2xl border border-black/10 bg-white p-6 select-text">
+              {renderDocBlocks()}
             </div>
           </div>
 
-          {/* Page counter moved to bottom-right of LEFT viewer (sticky overlay) */}
+          {/* Selection confirmation popover */}
+          {editMode && addMode && pendingAdd && (
+            <div
+              className="fixed z-[90]"
+              style={{
+                left: Math.min(pendingAdd.rect.x, window.innerWidth - 360),
+                top: Math.max(12, pendingAdd.rect.y - 90),
+              }}
+            >
+              <div className="w-[340px] rounded-2xl bg-[#0B0F2A] p-4 text-white shadow-xl">
+                <div className="text-sm font-extrabold">Add this highlight?</div>
+                <div className="mt-2 text-xs opacity-90 line-clamp-3">
+                  “{pendingAdd.text}”
+                </div>
+                <div className="mt-4 flex justify-end gap-2">
+                  <button
+                    onClick={cancelAddHighlight}
+                    className="rounded-full bg-white/15 px-4 py-2 text-xs font-extrabold hover:bg-white/20"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={confirmAddHighlight}
+                    className="rounded-full bg-white px-4 py-2 text-xs font-extrabold text-[#0B0F2A]"
+                  >
+                    Add
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Page counter (bottom-right of LEFT viewer) */}
           <div className="absolute bottom-5 right-5">
             <div className="flex items-center gap-2 rounded-2xl bg-white/95 px-3 py-2 shadow-[0_10px_26px_rgba(0,0,0,0.12)] border border-black/10">
               <button
@@ -582,7 +1059,7 @@ export default function ApplicationReview() {
                       title="Grade"
                       leftSub={mockLine("Minimum: ≥ C")}
                       rightValue={highlights.find((h) => h.key === "grade")?.value || "-"}
-                      onClick={() => jumpToHighlight("h-grade")}
+                      onClick={() => jumpToHighlight(highlights.find((h) => h.key === "grade")?.id)}
                     />
                     <ReasonCard
                       index={2}
@@ -590,7 +1067,7 @@ export default function ApplicationReview() {
                       title="Similarity"
                       leftSub={mockLine("Requirement: ≥ 80%")}
                       rightValue={highlights.find((h) => h.key === "similarity")?.value || "-"}
-                      onClick={() => jumpToHighlight("h-sim")}
+                      onClick={() => jumpToHighlight(highlights.find((h) => h.key === "similarity")?.id)}
                     />
                     <ReasonCard
                       index={3}
@@ -598,14 +1075,14 @@ export default function ApplicationReview() {
                       title="Credit Hours"
                       leftSub={mockLine("Minimum: 3 credit hours")}
                       rightValue={highlights.find((h) => h.key === "credit")?.value || "-"}
-                      onClick={() => jumpToHighlight("h-cred")}
+                      onClick={() => jumpToHighlight(highlights.find((h) => h.key === "credit")?.id)}
                     />
                   </div>
                 </div>
 
                 <div className="mt-6 rounded-2xl bg-white px-4 py-3 text-xs text-[#0B0F2A]/65">
-                  Tip: Turn on <span className="font-bold">Edit Highlights</span> to mark evidence as correct/incorrect.
-                  Regenerate to refresh the suggested outcome.
+                  Tip: Use <span className="font-bold">Edit Highlights</span> to remove wrong evidence or add missing highlights.
+                  If you changed highlights, regenerate to refresh the suggested outcome.
                 </div>
               </div>
             )}
@@ -659,7 +1136,10 @@ export default function ApplicationReview() {
                     className="h-24 w-full resize-none rounded-2xl border border-black/10 p-3 text-sm outline-none"
                   />
                   <div className="mt-3 flex justify-end">
-                    <button onClick={addComment} className="rounded-full bg-[#0B0F2A] px-6 py-3 text-sm font-extrabold text-white">
+                    <button
+                      onClick={addComment}
+                      className="rounded-full bg-[#0B0F2A] px-6 py-3 text-sm font-extrabold text-white"
+                    >
                       Post
                     </button>
                   </div>
@@ -741,7 +1221,7 @@ export default function ApplicationReview() {
                   ))}
 
                   <div className="rounded-2xl bg-white p-4 text-xs text-[#0B0F2A]/65">
-                    (Prototype) Later you can log: “added highlight”, “removed highlight”, “changed evidence”, “regenerated outcome”, etc.
+                    (Prototype) Later you can log: “added highlight”, “removed highlight”, “regenerated outcome”, etc.
                   </div>
                 </div>
               </div>
@@ -750,6 +1230,7 @@ export default function ApplicationReview() {
         </div>
       </div>
 
+      {/* Confirm modal */}
       <ConfirmModal
         open={confirm.open}
         title={
@@ -757,6 +1238,8 @@ export default function ApplicationReview() {
             ? "Accept system suggestion?"
             : confirm.type === "reject"
             ? "Reject system suggestion?"
+            : confirm.type === "exitRegen"
+            ? "Regenerate suggested outcome?"
             : "Regenerate suggested outcome?"
         }
         body={
@@ -764,10 +1247,22 @@ export default function ApplicationReview() {
             ? "This will record that you agree with the system’s suggested outcome."
             : confirm.type === "reject"
             ? "This will record that you disagree with the system’s suggested outcome."
-            : "The system will recompute similarity/outcome based on your edited highlights."
+            : confirm.type === "exitRegen"
+            ? "Changes were detected in highlights. Regenerate now to refresh the suggested outcome?"
+            : "The system will recompute the suggested outcome based on the updated highlights."
         }
+        cancelLabel={confirm.type === "exitRegen" ? "Not now" : "Cancel"}
+        confirmLabel={confirm.type === "exitRegen" ? "Regenerate" : "Yes"}
         onCancel={() => setConfirm({ open: false, type: "" })}
         onConfirm={onConfirmAction}
+      />
+
+      {/* Loading overlay during regeneration */}
+      <LoadingOverlay
+        open={regenLoading}
+        title="Regenerating suggested outcome"
+        body="Please wait. You can cancel if it’s taking too long."
+        onCancel={cancelRegenerate}
       />
 
       <Toast message={toast} onClose={() => setToast("")} />
@@ -810,16 +1305,18 @@ function ReasonCard({ index, title, leftSub, rightValue, active, onClick }) {
   );
 }
 
-function HighlightLine({ active, label, tooltip, editable, onToggle }) {
+function HighlightPill({ highlight, active, tooltip, editable, onRemove, onClick, compact = false }) {
   return (
-    <div className="relative">
+    <div className="relative inline-flex">
       <span
+        onClick={onClick}
         className={[
-          "inline-flex items-center rounded-full px-3 py-1",
+          "inline-flex items-center rounded-full px-3 py-1 cursor-pointer select-text",
           active ? "bg-[#F6F2A9] text-[#0B0F2A]" : "bg-[#FFF6B8]/60 text-[#0B0F2A]",
+          compact ? "text-xs" : "text-sm",
         ].join(" ")}
       >
-        <span className="font-semibold">{label}</span>
+        <span className="font-semibold">{highlight.snippet}</span>
 
         <span className="group relative ml-2 inline-flex items-center">
           <span className="text-[#0B0F2A]/40">ⓘ</span>
@@ -830,11 +1327,15 @@ function HighlightLine({ active, label, tooltip, editable, onToggle }) {
 
         {editable && (
           <button
-            onClick={onToggle}
-            className="ml-3 rounded-full bg-white/70 px-2 py-1 text-[11px] font-extrabold hover:bg-white"
-            title="Toggle correctness (prototype)"
+            onClick={(e) => {
+              e.stopPropagation();
+              onRemove?.();
+            }}
+            className="ml-3 inline-flex items-center gap-1 rounded-full bg-white/75 px-2 py-1 text-[11px] font-extrabold hover:bg-white"
+            title="Remove this highlight"
           >
-            toggle
+            <IconTrash className="h-4 w-4" />
+            Remove
           </button>
         )}
       </span>
