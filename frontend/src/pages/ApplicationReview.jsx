@@ -200,13 +200,18 @@ function RegeneratingOverlay({ open, onCancel }) {
     <div className="fixed inset-0 z-[80] bg-black/30 flex items-center justify-center px-6">
       <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
         <div className="text-lg font-extrabold text-[#0B0F2A]">Regenerating suggested outcome…</div>
-        <div className="mt-2 text-sm text-[#0B0F2A]/70">Please wait. You can cancel if it’s taking too long.</div>
+        <div className="mt-2 text-sm text-[#0B0F2A]/70">
+          Please wait. You can cancel if it’s taking too long.
+        </div>
 
         <div className="mt-5 flex items-center gap-3">
           <div className="h-10 w-10 rounded-full border-4 border-black/10 border-t-[#0B0F2A] animate-spin" />
           <div className="text-sm font-semibold text-[#0B0F2A]/75">Loading…</div>
 
-          <button onClick={onCancel} className="ml-auto rounded-full bg-[#EFEFEF] px-5 py-3 text-sm font-extrabold text-[#0B0F2A]">
+          <button
+            onClick={onCancel}
+            className="ml-auto rounded-full bg-[#EFEFEF] px-5 py-3 text-sm font-extrabold text-[#0B0F2A]"
+          >
             Cancel
           </button>
         </div>
@@ -240,6 +245,7 @@ const DOCS = [
 
 const mockApp = {
   id: "A001",
+  createdAt: "2025-11-18", // ✅ added (you can format however you like)
   studentName: "Lee Wen Xuan",
   studentId: "22115737",
   type: "Credit Exemption",
@@ -256,7 +262,7 @@ const REQUIREMENTS = {
 
 const initialHighlights = [
   {
-    id: "h-grade-1",
+    id: "h-grade",
     key: "grade",
     label: "Grade",
     docId: "transcript",
@@ -266,7 +272,7 @@ const initialHighlights = [
     snippet: "Grade: A+",
   },
   {
-    id: "h-sim-1",
+    id: "h-sim",
     key: "similarity",
     label: "Similarity",
     docId: "sunway",
@@ -276,7 +282,7 @@ const initialHighlights = [
     snippet: "CST 2309: Introduction to Web Programming",
   },
   {
-    id: "h-cred-1",
+    id: "h-cred",
     key: "credit",
     label: "Credit Hours",
     docId: "sunway",
@@ -302,11 +308,6 @@ function titleFromKey(key) {
   if (key === "similarity") return "Similarity";
   return "Grade";
 }
-function tooltipFromKey(key) {
-  if (key === "credit") return REQUIREMENTS.credit;
-  if (key === "grade") return REQUIREMENTS.grade;
-  return "Similar to Sunway syllabus: topics match (HTML, CSS, JS fundamentals)";
-}
 
 function parseGradeValue(text) {
   const m = String(text).toUpperCase().match(/\b(A\+|A-|A|B\+|B-|B|C\+|C-|C|D\+|D-|D|F)\b/);
@@ -326,16 +327,31 @@ function parsePercent(text) {
   return m ? Number(m[1]) : NaN;
 }
 
-function getLatestHighlightByKey(highlights, key) {
-  const list = highlights.filter((h) => h.key === key);
-  return list.length ? list[list.length - 1] : null;
-}
-
 function computeOutcomeFromHighlights(highlights) {
-  // use the latest highlight for each category
-  const gradeH = getLatestHighlightByKey(highlights, "grade");
-  const simH = getLatestHighlightByKey(highlights, "similarity");
-  const credH = getLatestHighlightByKey(highlights, "credit");
+  const pickBest = (arr, key) => {
+    const items = arr.filter((h) => h.key === key);
+    if (items.length === 0) return null;
+    // "best" = max numeric for percent/credit, best grade for grade
+    if (key === "similarity") {
+      return items
+        .slice()
+        .sort((a, b) => (parsePercent(b.value || b.snippet) || 0) - (parsePercent(a.value || a.snippet) || 0))[0];
+    }
+    if (key === "credit") {
+      return items
+        .slice()
+        .sort((a, b) => (parseNumber(b.value || b.snippet) || 0) - (parseNumber(a.value || a.snippet) || 0))[0];
+    }
+    // grade: pick highest in order
+    const order = ["F", "D-", "D", "D+", "C-", "C", "C+", "B-", "B", "B+", "A-", "A", "A+"];
+    return items
+      .slice()
+      .sort((a, b) => order.indexOf(parseGradeValue(b.value || b.snippet)) - order.indexOf(parseGradeValue(a.value || a.snippet)))[0];
+  };
+
+  const gradeH = pickBest(highlights, "grade");
+  const simH = pickBest(highlights, "similarity");
+  const credH = pickBest(highlights, "credit");
 
   if (!gradeH || !simH || !credH) return "Reject";
 
@@ -348,16 +364,22 @@ function computeOutcomeFromHighlights(highlights) {
 }
 
 /* ------------------ add-highlight popover ------------------ */
-function AddHighlightPopover({ open, x, y, selectedText, category, onChangeCategory, onCancel, onConfirm }) {
+function AddHighlightPopover({
+  open,
+  x,
+  y,
+  selectedText,
+  category,
+  onChangeCategory,
+  onCancel,
+  onConfirm,
+}) {
   if (!open) return null;
 
   return (
     <div
       className="fixed z-[75]"
-      style={{
-        left: Math.min(x, window.innerWidth - 360),
-        top: Math.min(y + 10, window.innerHeight - 260),
-      }}
+      style={{ left: Math.min(x, window.innerWidth - 360), top: Math.min(y + 10, window.innerHeight - 260) }}
     >
       <div className="w-[340px] rounded-3xl bg-white shadow-2xl border border-black/10 overflow-hidden">
         <div className="px-5 py-4 border-b border-black/10">
@@ -408,18 +430,11 @@ export default function ApplicationReview() {
   const [page, setPage] = useState(1);
   const [goTo, setGoTo] = useState("");
 
-  // ✅ allow MULTIPLE highlights per category
   const [highlights, setHighlights] = useState(initialHighlights);
-
-  // default selected: the latest similarity if exists, else first highlight
-  const defaultSelected = useMemo(() => {
-    const sim = getLatestHighlightByKey(initialHighlights, "similarity");
-    return sim?.id || initialHighlights[0]?.id || "";
-  }, []);
-  const [selectedHighlightId, setSelectedHighlightId] = useState(defaultSelected);
+  const [selectedHighlightId, setSelectedHighlightId] = useState("h-sim");
 
   const selectedHighlight = useMemo(
-    () => highlights.find((h) => h.id === selectedHighlightId) || null,
+    () => highlights.find((h) => h.id === selectedHighlightId),
     [highlights, selectedHighlightId]
   );
 
@@ -458,7 +473,7 @@ export default function ApplicationReview() {
 
   // comments for highlights
   const [comments, setComments] = useState([
-    { id: 1, highlightId: "h-sim-1", by: "Programme Leader", at: "2025-11-20 10:20", text: "Similarity looks valid. Check if learning outcomes align." },
+    { id: 1, highlightId: "h-sim", by: "Programme Leader", at: "2025-11-20 10:20", text: "Similarity looks valid. Check if learning outcomes align." },
   ]);
   const [newComment, setNewComment] = useState("");
 
@@ -469,8 +484,16 @@ export default function ApplicationReview() {
   const currentDoc = DOCS.find((d) => d.id === docId) || DOCS[0];
   const totalPages = currentDoc.pages;
 
-  // header similarity uses latest similarity highlight (if any)
-  const similarityScore = getLatestHighlightByKey(highlights, "similarity")?.value || "81%";
+  // show similarity pill from the "best" similarity highlight (or fallback)
+  const bestSimilarity = useMemo(() => {
+    const sims = highlights.filter((h) => h.key === "similarity");
+    if (sims.length === 0) return null;
+    return sims
+      .slice()
+      .sort((a, b) => (parsePercent(b.value || b.snippet) || 0) - (parsePercent(a.value || a.snippet) || 0))[0];
+  }, [highlights]);
+
+  const similarityScore = bestSimilarity?.value || "81%";
 
   const myHighlightComments = useMemo(
     () => comments.filter((c) => c.highlightId === selectedHighlightId),
@@ -536,15 +559,10 @@ export default function ApplicationReview() {
     const next = highlights.filter((h) => h.id !== hid);
     pushHistoryAndApply(next);
 
-    // if removed selected, pick a sensible fallback (latest similarity, else any)
     if (selectedHighlightId === hid) {
-      const fallback =
-        getLatestHighlightByKey(next, "similarity")?.id ||
-        next[next.length - 1]?.id ||
-        "";
+      const fallback = next[0]?.id || "";
       setSelectedHighlightId(fallback);
     }
-
     setToast("Highlight removed.");
   };
 
@@ -571,8 +589,8 @@ export default function ApplicationReview() {
 
   const startRegeneration = () => {
     setIsRegenerating(true);
-
     if (regenTimerRef.current) clearTimeout(regenTimerRef.current);
+
     regenTimerRef.current = setTimeout(() => {
       const newOutcome = computeOutcomeFromHighlights(highlights);
       setSystemOutcome(newOutcome);
@@ -587,7 +605,6 @@ export default function ApplicationReview() {
     if (regenTimerRef.current) clearTimeout(regenTimerRef.current);
     setIsRegenerating(false);
     setToast("Regeneration cancelled.");
-    // keep dirty=true so user can regenerate later
   };
 
   const onAcceptSystem = () => setConfirm({ open: true, type: "accept" });
@@ -608,7 +625,10 @@ export default function ApplicationReview() {
   const addComment = () => {
     const text = newComment.trim();
     if (!text || !selectedHighlightId) return;
-    setComments((prev) => [...prev, { id: Date.now(), highlightId: selectedHighlightId, by: "Programme Leader", at: "Just now", text }]);
+    setComments((prev) => [
+      ...prev,
+      { id: Date.now(), highlightId: selectedHighlightId, by: "Programme Leader", at: "Just now", text },
+    ]);
     setNewComment("");
     setToast("Comment added.");
   };
@@ -623,22 +643,18 @@ export default function ApplicationReview() {
     setGoTo("");
   };
 
-  // Add Highlight (Option A): user selects text -> popover -> choose category
+  // Add Highlight (Option A)
   const onDocMouseUp = (e) => {
     if (!editMode || !addMode) return;
     const sel = window.getSelection();
     if (!sel) return;
-
     const text = sel.toString().trim();
     if (!text) return;
 
-    // ensure selection is inside viewer
     const viewer = viewerRef.current;
     if (!viewer) return;
-
     const anchorNode = sel.anchorNode;
     if (!anchorNode) return;
-
     const anchorEl = anchorNode.nodeType === 1 ? anchorNode : anchorNode.parentElement;
     if (!anchorEl || !viewer.contains(anchorEl)) return;
 
@@ -650,14 +666,13 @@ export default function ApplicationReview() {
       category: "similarity",
     });
 
-    // stop add mode; user can click "Add highlight" again for another
     setAddMode(false);
   };
 
+  // ✅ FIX: Always APPEND highlight; never replace existing highlight for same category
   const confirmAddHighlight = () => {
     const { selectedText, category } = addPopover;
 
-    // derive value in a simple, helpful way (prototype)
     let value = "";
     if (category === "grade") value = parseGradeValue(selectedText) || "A+";
     if (category === "similarity") {
@@ -669,8 +684,7 @@ export default function ApplicationReview() {
       value = Number.isFinite(n) ? String(n) : "4";
     }
 
-    // ✅ FIX: ALWAYS APPEND (do not replace existing highlights of the same category)
-    const newItem = {
+    const newH = {
       id: `h-${category}-${Date.now()}`,
       key: category,
       label: titleFromKey(category),
@@ -681,11 +695,9 @@ export default function ApplicationReview() {
       snippet: selectedText,
     };
 
-    const next = [...highlights, newItem];
+    const next = [...highlights, newH];
     pushHistoryAndApply(next);
-
-    // select the newly added highlight so user sees it’s added
-    setSelectedHighlightId(newItem.id);
+    setSelectedHighlightId(newH.id);
 
     setAddPopover((p) => ({ ...p, open: false, selectedText: "" }));
     setToast("Highlight added.");
@@ -696,32 +708,34 @@ export default function ApplicationReview() {
     setToast("Add highlight cancelled.");
   };
 
-  // for right panel: show latest values per category
-  const latestGrade = getLatestHighlightByKey(highlights, "grade");
-  const latestSim = getLatestHighlightByKey(highlights, "similarity");
-  const latestCred = getLatestHighlightByKey(highlights, "credit");
-
-  // for viewer: show ALL highlights per category (in the “document”)
-  const simHighlights = highlights.filter((h) => h.key === "similarity");
-  const creditHighlights = highlights.filter((h) => h.key === "credit");
-  const gradeHighlights = highlights.filter((h) => h.key === "grade");
+  // group highlights for the viewer (so multiple per category can show)
+  const highlightsByKey = useMemo(() => {
+    const map = { similarity: [], credit: [], grade: [] };
+    for (const h of highlights) {
+      if (map[h.key]) map[h.key].push(h);
+    }
+    return map;
+  }, [highlights]);
 
   return (
     <div className="bg-white">
       <RegeneratingOverlay open={isRegenerating} onCancel={cancelRegeneration} />
 
-      {/* ---------- HEADER (single baseline, spacing like your Figma strip) ---------- */}
+      {/* ---------- HEADER ---------- */}
       <div className="flex items-center gap-6">
-        {/* Back */}
-        <button onClick={() => navigate("/tasks")} className="rounded-xl p-2 text-[#0B0F2A] hover:bg-black/5" title="Back">
+        <button
+          onClick={() => navigate("/tasks")}
+          className="rounded-xl p-2 text-[#0B0F2A] hover:bg-black/5"
+          title="Back"
+        >
           <IconBack className="h-8 w-8" />
         </button>
 
-        {/* Center group: Title + dropdown + similarity (same baseline) */}
         <div className="flex flex-1 items-center gap-6">
-          <h1 className="text-5xl font-extrabold tracking-tight text-[#0B0F2A] whitespace-nowrap leading-none">Application Review</h1>
+          <h1 className="text-5xl font-extrabold tracking-tight text-[#0B0F2A] whitespace-nowrap leading-none">
+            Application Review
+          </h1>
 
-          {/* Doc dropdown */}
           <div className="relative">
             <select
               value={docId}
@@ -742,25 +756,28 @@ export default function ApplicationReview() {
             </span>
           </div>
 
-          {/* Similarity */}
           <div className="flex items-center gap-3 whitespace-nowrap">
             <span className="text-sm font-bold text-[#0B0F2A]">Similarity</span>
-            <span className="rounded-xl bg-[#EFEFEF] px-3 py-2 text-sm font-extrabold text-[#0B0F2A]">{similarityScore}</span>
+            <span className="rounded-xl bg-[#EFEFEF] px-3 py-2 text-sm font-extrabold text-[#0B0F2A]">
+              {similarityScore}
+            </span>
           </div>
         </div>
 
-        {/* Right side: Edit / Editing controls */}
         <div className="flex items-center gap-3">
           {!editMode ? (
             <>
-              <button onClick={beginEditMode} className="rounded-2xl bg-[#EFEFEF] px-4 py-3 text-sm font-extrabold text-[#0B0F2A]">
+              <button
+                onClick={beginEditMode}
+                className="rounded-2xl bg-[#EFEFEF] px-4 py-3 text-sm font-extrabold text-[#0B0F2A]"
+              >
                 <span className="inline-flex items-center gap-2">
                   <IconPencil className="h-5 w-5" />
                   Edit Highlights
                 </span>
               </button>
 
-              {/* ✅ show regenerate ONLY when NOT editing + dirty (your rule) */}
+              {/* show regenerate ONLY when NOT editing + dirty */}
               {dirty && (
                 <button
                   onClick={startRegeneration}
@@ -781,7 +798,10 @@ export default function ApplicationReview() {
 
               <div className="hidden md:block text-xs font-bold text-[#0B0F2A]/60">{saveStatus}</div>
 
-              <button onClick={requestExitEditMode} className="rounded-2xl bg-[#EFEFEF] px-4 py-3 text-sm font-extrabold text-[#0B0F2A]">
+              <button
+                onClick={requestExitEditMode}
+                className="rounded-2xl bg-[#EFEFEF] px-4 py-3 text-sm font-extrabold text-[#0B0F2A]"
+              >
                 Exit
               </button>
             </>
@@ -791,23 +811,23 @@ export default function ApplicationReview() {
 
       {/* ---------- MAIN LAYOUT ---------- */}
       <div className="mt-10 flex gap-8">
-        {/* LEFT: Document viewer mock */}
+        {/* LEFT: Viewer */}
         <div className="relative w-[62%] rounded-3xl bg-white shadow-[0_14px_40px_rgba(0,0,0,0.08)]">
           <div ref={viewerRef} className="h-[70vh] overflow-auto rounded-3xl p-6" onMouseUp={onDocMouseUp}>
-            {/* Top row inside viewer */}
             <div className="flex items-center gap-3">
               <div className="text-sm font-semibold text-[#0B0F2A]/70">
                 {currentDoc.name} — Page {page}
               </div>
 
-              {/* Editing tools inside viewer */}
               {editMode && (
                 <div className="ml-auto flex items-center gap-2">
                   <button
                     onClick={() => setAddMode(true)}
                     className={[
                       "rounded-2xl px-3 py-2 text-xs font-extrabold border",
-                      addMode ? "bg-[#0B0F2A] text-white border-[#0B0F2A]" : "bg-white text-[#0B0F2A] border-black/10 hover:bg-black/[0.03]",
+                      addMode
+                        ? "bg-[#0B0F2A] text-white border-[#0B0F2A]"
+                        : "bg-white text-[#0B0F2A] border-black/10 hover:bg-black/[0.03]",
                     ].join(" ")}
                     title="Add a missing highlight"
                   >
@@ -822,7 +842,9 @@ export default function ApplicationReview() {
                     disabled={past.length === 0}
                     className={[
                       "rounded-2xl p-2 border",
-                      past.length === 0 ? "bg-[#EFEFEF] text-[#0B0F2A]/35 border-black/5" : "bg-white text-[#0B0F2A] border-black/10 hover:bg-black/[0.03]",
+                      past.length === 0
+                        ? "bg-[#EFEFEF] text-[#0B0F2A]/35 border-black/5"
+                        : "bg-white text-[#0B0F2A] border-black/10 hover:bg-black/[0.03]",
                     ].join(" ")}
                     title="Undo"
                   >
@@ -834,7 +856,9 @@ export default function ApplicationReview() {
                     disabled={future.length === 0}
                     className={[
                       "rounded-2xl p-2 border",
-                      future.length === 0 ? "bg-[#EFEFEF] text-[#0B0F2A]/35 border-black/5" : "bg-white text-[#0B0F2A] border-black/10 hover:bg-black/[0.03]",
+                      future.length === 0
+                        ? "bg-[#EFEFEF] text-[#0B0F2A]/35 border-black/5"
+                        : "bg-white text-[#0B0F2A] border-black/10 hover:bg-black/[0.03]",
                     ].join(" ")}
                     title="Redo"
                   >
@@ -850,23 +874,25 @@ export default function ApplicationReview() {
               </div>
             )}
 
-            {/* Fake document page */}
             <div className="mt-4 rounded-2xl border border-black/10 bg-white p-6">
               <div className="text-center font-bold text-[#0B0F2A]">Online Course Syllabus</div>
               <div className="mt-4 border-t border-black/10" />
 
-              {/* Highlight blocks (driven by state) */}
               <div className="mt-6 space-y-6 text-sm text-[#0B0F2A]/85">
-                {/* Similarity highlights (ALL) */}
-                {simHighlights.map((h) => (
+                {/* Similarity highlights (can be multiple now) */}
+                {highlightsByKey.similarity.map((h) => (
                   <HighlightLine
                     key={h.id}
                     active={selectedHighlightId === h.id}
                     label={h.snippet || "—"}
-                    tooltip={tooltipFromKey("similarity")}
+                    tooltip="Similar to Sunway syllabus: topics match (HTML, CSS, JS fundamentals)"
                     editable={editMode}
-                    onClick={() => setSelectedHighlightId(h.id)}
                     onRemove={() => removeHighlight(h.id)}
+                    onClick={() => {
+                      setSelectedHighlightId(h.id);
+                      setDocId(h.docId);
+                      setPage(h.page);
+                    }}
                   />
                 ))}
 
@@ -874,31 +900,39 @@ export default function ApplicationReview() {
                 <div className="font-semibold text-[#0B0F2A]">Instructor Information</div>
                 <div className="text-[#0B0F2A]/70">Email Address: (hidden)</div>
 
-                {/* Credit highlights (ALL) */}
-                {creditHighlights.map((h) => (
+                {/* Credit highlights */}
+                {highlightsByKey.credit.map((h) => (
                   <HighlightLine
                     key={h.id}
                     active={selectedHighlightId === h.id}
                     label={h.snippet || "—"}
-                    tooltip={tooltipFromKey("credit")}
+                    tooltip="Minimum required: 3 credit hours"
                     editable={editMode}
-                    onClick={() => setSelectedHighlightId(h.id)}
                     onRemove={() => removeHighlight(h.id)}
+                    onClick={() => {
+                      setSelectedHighlightId(h.id);
+                      setDocId(h.docId);
+                      setPage(h.page);
+                    }}
                   />
                 ))}
 
                 <div className="h-6" />
 
-                {/* Grade highlights (ALL) */}
-                {gradeHighlights.map((h) => (
+                {/* Grade highlights */}
+                {highlightsByKey.grade.map((h) => (
                   <HighlightLine
                     key={h.id}
                     active={selectedHighlightId === h.id}
                     label={h.snippet || "—"}
-                    tooltip={tooltipFromKey("grade")}
+                    tooltip="Minimum required: ≥ C"
                     editable={editMode}
-                    onClick={() => setSelectedHighlightId(h.id)}
                     onRemove={() => removeHighlight(h.id)}
+                    onClick={() => {
+                      setSelectedHighlightId(h.id);
+                      setDocId(h.docId);
+                      setPage(h.page);
+                    }}
                   />
                 ))}
 
@@ -909,7 +943,7 @@ export default function ApplicationReview() {
             </div>
           </div>
 
-          {/* Page counter moved to bottom-right of LEFT viewer (sticky overlay) */}
+          {/* Page counter bottom-right */}
           <div className="absolute bottom-5 right-5">
             <div className="flex items-center gap-2 rounded-2xl bg-white/95 px-3 py-2 shadow-[0_10px_26px_rgba(0,0,0,0.12)] border border-black/10">
               <button
@@ -943,14 +977,17 @@ export default function ApplicationReview() {
                 placeholder="Go"
                 className="w-14 rounded-xl bg-[#EFEFEF] px-2 py-2 text-sm font-bold text-[#0B0F2A] outline-none"
               />
-              <button onClick={goToPage} className="rounded-xl bg-[#EFEFEF] px-3 py-2 text-sm font-extrabold text-[#0B0F2A] hover:bg-black/5">
+              <button
+                onClick={goToPage}
+                className="rounded-xl bg-[#EFEFEF] px-3 py-2 text-sm font-extrabold text-[#0B0F2A] hover:bg-black/5"
+              >
                 OK
               </button>
             </div>
           </div>
         </div>
 
-        {/* MIDDLE: vertical icon buttons */}
+        {/* MIDDLE: icons */}
         <div className="flex flex-col items-center gap-3 pt-6">
           <SideIconButton active={panel === "suggested"} label="Suggested outcome" onClick={() => setPanel("suggested")}>
             <IconBulb className="h-6 w-6 text-[#0B0F2A]" />
@@ -975,7 +1012,6 @@ export default function ApplicationReview() {
 
         {/* RIGHT: panel */}
         <div className="w-[34%] rounded-3xl bg-[#F1F1F1] shadow-[0_14px_40px_rgba(0,0,0,0.08)] overflow-hidden">
-          {/* Panel header */}
           <div className="border-b border-black/10 bg-[#F1F1F1] px-6 py-5 text-center font-extrabold text-[#0B0F2A]">
             {panel === "suggested" && "Suggested Outcome"}
             {panel === "info" && "Application Info"}
@@ -984,15 +1020,12 @@ export default function ApplicationReview() {
             {panel === "version" && "Version Control"}
           </div>
 
-          {/* Panel body */}
           <div className="p-6">
             {panel === "suggested" && (
               <div>
-                {/* outcome */}
                 <div className="flex items-center justify-center gap-3 border-b border-black/10 pb-6">
                   <div className="text-3xl font-extrabold text-[#0B0F2A]">{systemOutcome}</div>
 
-                  {/* accept/reject icons */}
                   <div className="ml-auto flex items-center gap-2">
                     <button
                       onClick={onAcceptSystem}
@@ -1011,7 +1044,6 @@ export default function ApplicationReview() {
                   </div>
                 </div>
 
-                {/* reasonings */}
                 <div className="mt-6">
                   <div className="text-sm font-extrabold text-[#0B0F2A]">Reasonings</div>
                   <div className="mt-1 text-xs text-[#0B0F2A]/60">
@@ -1024,9 +1056,9 @@ export default function ApplicationReview() {
                       active={selectedHighlight?.key === "grade"}
                       title="Grade"
                       leftSub={REQUIREMENTS.grade}
-                      rightValue={latestGrade?.value || "-"}
+                      rightValue={highlightsByKey.grade[0]?.value || "-"}
                       onClick={() => {
-                        const hid = latestGrade?.id;
+                        const hid = highlightsByKey.grade[0]?.id;
                         if (hid) jumpToHighlight(hid);
                       }}
                     />
@@ -1035,9 +1067,9 @@ export default function ApplicationReview() {
                       active={selectedHighlight?.key === "similarity"}
                       title="Similarity"
                       leftSub={REQUIREMENTS.similarity}
-                      rightValue={latestSim?.value || "-"}
+                      rightValue={bestSimilarity?.value || "-"}
                       onClick={() => {
-                        const hid = latestSim?.id;
+                        const hid = bestSimilarity?.id || highlightsByKey.similarity[0]?.id;
                         if (hid) jumpToHighlight(hid);
                       }}
                     />
@@ -1046,9 +1078,9 @@ export default function ApplicationReview() {
                       active={selectedHighlight?.key === "credit"}
                       title="Credit Hours"
                       leftSub={REQUIREMENTS.credit}
-                      rightValue={latestCred?.value || "-"}
+                      rightValue={highlightsByKey.credit[0]?.value || "-"}
                       onClick={() => {
-                        const hid = latestCred?.id;
+                        const hid = highlightsByKey.credit[0]?.id;
                         if (hid) jumpToHighlight(hid);
                       }}
                     />
@@ -1064,6 +1096,10 @@ export default function ApplicationReview() {
             {panel === "info" && (
               <div className="space-y-4">
                 <InfoRow label="Application ID" value={id || mockApp.id} />
+
+                {/* ✅ NEW FIELD */}
+                <InfoRow label="Created Date" value={mockApp.createdAt} />
+
                 <InfoRow label="Type" value={mockApp.type} />
                 <InfoRow label="Student" value={`${mockApp.studentName} (${mockApp.studentId})`} />
                 <InfoRow label="Requested Subject" value={mockApp.requestedSubject} />
@@ -1081,7 +1117,9 @@ export default function ApplicationReview() {
                 <div className="rounded-2xl bg-white p-4">
                   <div className="text-xs font-bold text-[#0B0F2A]/70">Selected evidence</div>
                   <div className="mt-1 font-extrabold text-[#0B0F2A]">{selectedHighlight?.label || "—"}</div>
-                  <div className="mt-2 text-xs text-[#0B0F2A]/60">{selectedHighlight?.snippet || "Select a reasoning to comment on it."}</div>
+                  <div className="mt-2 text-xs text-[#0B0F2A]/60">
+                    {selectedHighlight?.snippet || "Select a reasoning to comment on it."}
+                  </div>
                 </div>
 
                 <div className="mt-5 space-y-3">
@@ -1157,7 +1195,9 @@ export default function ApplicationReview() {
                           <div className="text-xs text-[#0B0F2A]/60">{sl.role}</div>
                         </div>
 
-                        <span className="ml-auto rounded-2xl bg-[#D9D9D9] px-4 py-2 text-sm font-extrabold text-[#0B0F2A]">{sl.decision}</span>
+                        <span className="ml-auto rounded-2xl bg-[#D9D9D9] px-4 py-2 text-sm font-extrabold text-[#0B0F2A]">
+                          {sl.decision}
+                        </span>
 
                         <button
                           onClick={() => setToast(`Opening contact for ${sl.name}… (prototype)`)}
@@ -1188,7 +1228,7 @@ export default function ApplicationReview() {
                   ))}
 
                   <div className="rounded-2xl bg-white p-4 text-xs text-[#0B0F2A]/65">
-                    (Prototype) Later you can log: “added highlight”, “removed highlight”, “regenerated outcome”, etc.
+                    (Prototype) Later you can log: “added highlight”, “removed highlight”, “changed evidence”, “regenerated outcome”, etc.
                   </div>
                 </div>
               </div>
@@ -1197,16 +1237,18 @@ export default function ApplicationReview() {
         </div>
       </div>
 
-      {/* Accept/Reject modal */}
       <ConfirmModal
         open={confirm.open}
         title={confirm.type === "accept" ? "Accept system suggestion?" : "Reject system suggestion?"}
-        body={confirm.type === "accept" ? "This will record that you agree with the system’s suggested outcome." : "This will record that you disagree with the system’s suggested outcome."}
+        body={
+          confirm.type === "accept"
+            ? "This will record that you agree with the system’s suggested outcome."
+            : "This will record that you disagree with the system’s suggested outcome."
+        }
         onCancel={() => setConfirm({ open: false, type: "" })}
         onConfirm={onConfirmAction}
       />
 
-      {/* Exit editing prompt: regenerate now / not now / continue editing */}
       <ExitEditingModal
         open={exitPromptOpen}
         onContinueEditing={() => setExitPromptOpen(false)}
@@ -1214,7 +1256,6 @@ export default function ApplicationReview() {
           setExitPromptOpen(false);
           setEditMode(false);
           setToast("Exited editing mode. You can regenerate later.");
-          // dirty stays true -> regenerate button appears in header (not in edit mode)
         }}
         onRegenerate={() => {
           setExitPromptOpen(false);
@@ -1223,7 +1264,6 @@ export default function ApplicationReview() {
         }}
       />
 
-      {/* Add highlight popover (Option A category prompt) */}
       <AddHighlightPopover
         open={addPopover.open}
         x={addPopover.x}
@@ -1278,36 +1318,43 @@ function ReasonCard({ index, title, leftSub, rightValue, active, onClick }) {
 function HighlightLine({ active, label, tooltip, editable, onRemove, onClick }) {
   return (
     <div className="relative">
-      <span
+      <button
+        type="button"
         onClick={onClick}
-        className={[
-          "inline-flex items-center rounded-full px-3 py-1 cursor-pointer",
-          active ? "bg-[#F6F2A9] text-[#0B0F2A]" : "bg-[#FFF6B8]/60 text-[#0B0F2A] hover:bg-[#FFF6B8]/80",
-        ].join(" ")}
+        className="text-left"
+        title="Click to select this highlight"
       >
-        <span className="font-semibold">{label}</span>
+        <span
+          className={[
+            "inline-flex items-center rounded-full px-3 py-1",
+            active ? "bg-[#F6F2A9] text-[#0B0F2A]" : "bg-[#FFF6B8]/60 text-[#0B0F2A]",
+          ].join(" ")}
+        >
+          <span className="font-semibold">{label}</span>
 
-        <span className="group relative ml-2 inline-flex items-center">
-          <span className="text-[#0B0F2A]/40">ⓘ</span>
-          <span className="pointer-events-none absolute left-full top-1/2 ml-3 hidden -translate-y-1/2 rounded-2xl bg-[#0B0F2A] px-4 py-3 text-xs text-white shadow-lg group-hover:block w-[260px]">
-            {tooltip}
+          <span className="group relative ml-2 inline-flex items-center">
+            <span className="text-[#0B0F2A]/40">ⓘ</span>
+            <span className="pointer-events-none absolute left-full top-1/2 ml-3 hidden -translate-y-1/2 rounded-2xl bg-[#0B0F2A] px-4 py-3 text-xs text-white shadow-lg group-hover:block w-[260px]">
+              {tooltip}
+            </span>
           </span>
-        </span>
 
-        {editable && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onRemove?.();
-            }}
-            className="ml-3 inline-flex items-center gap-2 rounded-full bg-white/70 px-2.5 py-1 text-[11px] font-extrabold hover:bg-white"
-            title="Remove highlight"
-          >
-            <IconTrash className="h-4 w-4" />
-            Remove
-          </button>
-        )}
-      </span>
+          {editable && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onRemove?.();
+              }}
+              className="ml-3 inline-flex items-center gap-2 rounded-full bg-white/70 px-2.5 py-1 text-[11px] font-extrabold hover:bg-white"
+              title="Remove highlight"
+            >
+              <IconTrash className="h-4 w-4" />
+              Remove
+            </button>
+          )}
+        </span>
+      </button>
     </div>
   );
 }

@@ -24,16 +24,7 @@ function App() {
           <Route path="/tasks/applications/:id" element={<ApplicationDetails />} />
           <Route path="/tasks/applications/:id/review" element={<ApplicationReview />} />
           <Route path="/teams" element={<Teams />} />   
-          <Route path="/reference" element={<ReferenceCases />} />
-          
-          {/*
-          <Route path="/application/:id" element={<ApplicationDetails />} />
-          <Route path="/review/:id" element={<ApplicationReview />} />
-          <Route path="/applications/:id" element={<ApplicationDetails />} />
-          <Route path="/applications/:id/review" element={<ApplicationReview />} />
-          <Route path="/details/:id" element={<ApplicationDetails />} /> 
-          */}
-        
+          <Route path="/reference" element={<ReferenceCases />} />      
         </Route>
       </Routes>
     </BrowserRouter>
