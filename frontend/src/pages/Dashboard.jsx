@@ -62,6 +62,9 @@ function SectionCard({ title, countBadge, rows }) {
           <table className="min-w-[1100px] w-full text-sm text-left">
           <thead className="text-gray-500 border-b">
             <tr className="h-12">
+              {/* no header label for action column */}
+              <th className="w-[110px]"></th>
+
               <th>ID</th>
               <th>Date</th>
               <th>Student ID, Name</th>
@@ -70,12 +73,19 @@ function SectionCard({ title, countBadge, rows }) {
               <th>Former Institution</th>
               <th>Requested Subject</th>
               <th>Type</th>
-              <th className="text-center">Action</th>
             </tr>
           </thead>
+
           <tbody>
             {rows.map((row) => (
               <tr key={row.id} className="h-14 border-b last:border-0">
+                {/* ACTION FIRST COLUMN */}
+                <td className="pr-4">
+                  <button className="px-5 py-2 rounded-full bg-[#FF6B2C] text-white text-xs font-semibold shadow-sm hover:shadow-md transition">
+                    {title === "Waiting on Subject Lecturers" ? "Remind" : "Review"}
+                  </button>
+                </td>
+
                 <td className="pr-4">{row.id}</td>
                 <td className="pr-4">{row.date}</td>
                 <td className="pr-4">{row.studentId}</td>
@@ -84,14 +94,10 @@ function SectionCard({ title, countBadge, rows }) {
                 <td className="pr-4">{row.institution}</td>
                 <td className="pr-4">{row.subject}</td>
                 <td className="pr-4">{row.type}</td>
-                <td className="pr-4 text-center">
-                  <button className="px-5 py-2 rounded-full bg-[#FF6B2C] text-white text-xs font-semibold shadow-sm hover:shadow-md transition">
-                    Review
-                  </button>
-                </td>
               </tr>
             ))}
           </tbody>
+
         </table>
         </div>
       </div>
