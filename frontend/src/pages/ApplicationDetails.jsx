@@ -1,6 +1,7 @@
 // src/pages/ApplicationDetails.jsx
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { api } from "../api/client";
 
 /* ---------- tiny inline icons ---------- */
 function IconBack({ className = "" }) {
@@ -80,6 +81,26 @@ function InfoItem({ label, value, linkish = false }) {
 export default function ApplicationDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
+  
+  const [app, setApp] = useState(null);
+  const [docs, setDocs] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        setLoading(true);
+        const res = await api.get(`/applications/${id}`);
+        setApp(res.data);
+      } catch (e) {
+        console.error(e);
+        alert("Failed to load application details.");
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, [id]);
 
   // --- mock data to match your figma fields ---
   const application = {
@@ -149,6 +170,9 @@ export default function ApplicationDetails() {
     else navigate("/tasks");
   };
 
+  if (loading) return <div className="mt-10 text-sm">Loading…</div>;
+  if (!app) return <div className="mt-10 text-sm">Application not found.</div>;
+
   return (
     <div className="bg-white">
       {/* Top row: back + title block + right statuses */}
@@ -168,14 +192,22 @@ export default function ApplicationDetails() {
           </h1>
 
           {/* Type pill + id/date */}
-          <div className="mt-6 flex items-center gap-6">
-            <span className="inline-flex items-center rounded-full bg-[#EFEFEF] px-5 py-2 text-sm font-semibold text-[#0B0F2A]">
-              {application.type}
+          <div className="flex items-center gap-4 mt-4">
+            <span className="rounded-full bg-[#EFEFEF] px-5 py-2 text-sm font-semibold text-[#0B0F2A]">
+              {app.type || "-"}
             </span>
-            <div className="text-sm font-semibold text-[#0B0F2A]/85">
-              {application.applicationId} | {application.date}
-            </div>
+
+            <span className="text-sm font-semibold text-[#0B0F2A]/80">
+              {app.application_id || app.id}{" "}
+              |{" "}
+              {app.created_at
+                ? new Date(app.created_at).toLocaleDateString()
+                : app.date_submitted
+                ? new Date(app.date_submitted).toLocaleDateString()
+                : "-"}
+            </span>
           </div>
+
         </div>
 
         {/* Right status stack */}
