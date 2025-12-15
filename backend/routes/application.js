@@ -179,6 +179,45 @@ router.post("/", upload.single("document"), async (req, res) => {
   }
 });
 
+/* =========================================================
+   3B) POST /api/applications/:id/documents
+   - Upload multiple PDFs for an existing application
+   - Saves file records into documents table
+   ========================================================= */
+router.post("/:id/documents", upload.array("documents", 10), async (req, res) => {
+  try {
+    const appId = req.params.id;
+
+    // check application exists
+    const app = await pool.query("SELECT id FROM applications WHERE id = $1", [appId]);
+    if (app.rows.length === 0) return res.status(404).json({ error: "Application not found" });
+
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ error: "No files uploaded. Use key: documents" });
+    }
+
+    // insert each uploaded file into documents table
+    const inserted = [];
+    for (const f of req.files) {
+      const result = await pool.query(
+        `INSERT INTO documents (application_id, file_name, file_type, file_path)
+         VALUES ($1, $2, $3, $4)
+         RETURNING *`,
+        [appId, f.originalname, f.mimetype, f.path]
+      );
+      inserted.push(result.rows[0]);
+    }
+
+    res.status(201).json({
+      message: "Documents uploaded",
+      application_id: appId,
+      documents: inserted,
+    });
+  } catch (err) {
+    console.error("POST /applications/:id/documents error:", err);
+    res.status(500).json({ error: "Failed to upload documents" });
+  }
+});
 
 
 /* =========================================================
