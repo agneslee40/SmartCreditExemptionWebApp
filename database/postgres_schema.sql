@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS applications (
   final_decision VARCHAR(20),
   status VARCHAR(50) DEFAULT 'Pending',
   remarks TEXT,
+  document_path TEXT;
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
