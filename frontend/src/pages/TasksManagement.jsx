@@ -1,9 +1,11 @@
 // src/pages/TasksManagement.jsx
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { api } from "../api/client";
 
 const TABS = ["All", "In Progress", "Credit Exemption", "Credit Transfer", "Completed"];
 
+{/*
 const initialApps = [
   {
     id: "A001",
@@ -88,6 +90,8 @@ const initialApps = [
     remarks: [{ by: "Registry", text: "Processed in system." }],
   },
 ];
+
+*/}
 
 // ---------- tiny inline icons (no extra library needed) ----------
 function IconFilter({ className = "" }) {
@@ -228,14 +232,76 @@ function ModalShell({ title, children, onClose, wide = false }) {
   );
 }
 
+function mapDbAppToUi(a) {
+  // convert ISO date -> yyyy-mm-dd (same style you used in Dashboard)
+  const dateStr = a.date_submitted ? String(a.date_submitted).slice(0, 10) : "-";
+
+  return {
+    // keep DB primary key for routing
+    dbId: a.id,
+
+    // UI currently shows application code like "A001"
+    id: a.application_id,
+
+    date: dateStr,
+    studentId: a.student_id || "-",
+    studentName: a.student_name || "-",
+    academicSession: a.academic_session || "-",
+
+    // you named this column "Previously Take Qualification" in UI
+    // but DB column is "qualification" (current programme). For now, map it here.
+    // Later we can add a dedicated "previous_qualification" column if you want.
+    prevQual: a.qualification || "-",
+
+    formerInstitution: a.former_institution || "-",
+    requestedSubject: a.requested_subject || "-",
+    type: a.type || "-",
+
+    // We'll compute progress later properly; for now keep everything In Progress
+    progress: "In Progress",
+
+    // backend returns these now (because your GET SELECT includes them)
+    stageStatus: {
+      subjectLecturer: a.sl_status || "Pending",
+      programmeLeader: a.pl_status || "Pending",
+      registry: a.registry_status || "Pending",
+      registryReminderSent: false, // UI-only
+    },
+
+    // team/remarks are not coming from backend yet
+    team: { name: "—", members: [] },
+    remarks: a.remarks ? [{ by: "Programme Leader", text: a.remarks }] : [],
+  };
+}
+
+const isFinalDecision = (s) => ["Approved", "Rejected"].includes(String(s || "").trim());
+
+const computeProgress = (app) => {
+  const done =
+    isFinalDecision(app.pl_status) &&
+    isFinalDecision(app.sl_status) &&
+    isFinalDecision(app.registry_status);
+
+  return done ? "Completed" : "In Progress";
+};
+
+const formatDateNice = (iso) => {
+  if (!iso) return "-";
+  // show yyyy-mm-dd like your dashboard
+  return String(iso).slice(0, 10);
+};
+
+
 // ---------- main page ----------
 export default function TasksManagement() {
   const navigate = useNavigate();
 
   const [tab, setTab] = useState("All");
   const [search, setSearch] = useState("");
-  const [apps, setApps] = useState(initialApps);
+  const [apps, setApps] = useState([]);
+  const [loading, setLoading] = useState(true);
 
+  
   const [toast, setToast] = useState("");
 
   const [showFilterPanel, setShowFilterPanel] = useState(false);
@@ -243,6 +309,66 @@ export default function TasksManagement() {
 
   const [editRemarkAppId, setEditRemarkAppId] = useState(null);
   const [editRemarkText, setEditRemarkText] = useState("");
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        setLoading(true);
+        const res = await api.get("/applications");
+
+        // map backend rows → UI rows used by your table
+        const mapped = (res.data || []).map((r) => {
+          const progress = computeProgress(r);
+
+          return {
+            id: r.application_id,                 // your UI uses A001 style
+            dbId: r.id,                           // keep DB id for navigation
+            date: formatDateNice(r.date_submitted),
+            studentId: r.student_id || "-",
+            studentName: r.student_name || "-",
+            academicSession: r.academic_session || "-",
+            prevQual: r.qualification || "-",     // you used "Previously Take Qualification"
+            formerInstitution: r.former_institution || "-",
+            requestedSubject: r.requested_subject || "-",
+            type: r.type || "-",
+            progress,
+
+            // stage statuses (use your real DB fields)
+            stageStatus: {
+              subjectLecturer: r.sl_status || "Pending",
+              programmeLeader: r.pl_status || "To Be Assign",
+              registry: r.registry_status || "Pending",
+              registryReminderSent: false,
+            },
+
+            // remarks: for now DB has single text field
+            remarks: r.remarks ? [{ by: "Programme Leader", text: r.remarks }] : [],
+
+            // “team” pill: simple prototype
+            team: {
+              name: "Computer Science", // keep static for now
+              members: [
+                { name: "Programme Leader", email: "pl@sunway.edu.my", avatar: "https://i.pravatar.cc/100?img=32" },
+                ...(r.sl_email
+                  ? [{ name: r.sl_name || "Subject Lecturer", email: r.sl_email, avatar: "https://i.pravatar.cc/100?img=22" }]
+                  : []),
+              ],
+            },
+          };
+        });
+
+        setApps(mapped);
+      } catch (e) {
+        console.error(e);
+        alert("Failed to load tasks from backend.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    load();
+  }, []);
+
 
   const filteredApps = useMemo(() => {
     let list = [...apps];
@@ -318,6 +444,10 @@ export default function TasksManagement() {
   };
 
   const teamModalApp = teamModalAppId ? apps.find((a) => a.id === teamModalAppId) : null;
+
+  if (loading) {
+    return <div className="mt-10 text-sm text-[#0B0F2A]">Loading…</div>;
+  }
 
   return (
     <div className="bg-white">
@@ -495,7 +625,7 @@ export default function TasksManagement() {
 
                             {/* View details */}
                             <button
-                              onClick={() => navigate(`/tasks/applications/${a.id}`)}
+                              onClick={() => navigate(`/tasks/applications/${a.dbId}`)}
                               className="rounded-full bg-[#EFEFEF] px-8 py-3 text-sm font-semibold text-[#0B0F2A] hover:bg-[#E7E7E7]"
                             >
                               View Details
@@ -503,7 +633,7 @@ export default function TasksManagement() {
 
                             {/* Review */}
                             <button
-                              onClick={() => navigate(`/tasks/applications/${a.id}/review`)}
+                              onClick={() => navigate(`/tasks/applications/${a.dbId}/review`)}
                               className="rounded-full bg-[#EFEFEF] px-8 py-3 text-sm font-semibold text-[#0B0F2A] hover:bg-[#E7E7E7]"
                             >
                               Review
