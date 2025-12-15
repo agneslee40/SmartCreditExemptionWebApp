@@ -234,7 +234,7 @@ export default function TasksManagement() {
   const [fAssignedTo, setFAssignedTo] = useState("All"); 
   // All | (later: actual SL names/emails)
 
-  
+  const [teamModalAppId, setTeamModalAppId] = useState(null);
 
   const [editRemarkAppId, setEditRemarkAppId] = useState(null);
   const [editRemarkText, setEditRemarkText] = useState("");
@@ -356,6 +356,7 @@ export default function TasksManagement() {
     return list;
   }, [apps, tab, search, sortBy, fType, fPl, fSl, fReg, fAssignedTo]);
 
+  const openTeamModal = (appId) => setTeamModalAppId(appId);
 
   const sendRegistryReminder = (appId) => {
     setApps((prev) =>
@@ -402,7 +403,7 @@ export default function TasksManagement() {
     setEditRemarkAppId(null);
   };
 
-
+  const teamModalApp = teamModalAppId ? apps.find((a) => a.id === teamModalAppId) : null;
 
   if (loading) {
     return <div className="mt-10 text-sm text-[#0B0F2A]">Loading…</div>;
@@ -554,7 +555,32 @@ export default function TasksManagement() {
                               {a.progress}
                             </Pill>
 
-                            
+                            {/* Team pill (clickable) */}
+                            <button
+                              onClick={() => openTeamModal(a.id)}
+                              className="flex items-center gap-4 rounded-full bg-[#EFEFEF] px-5 py-3 text-sm font-semibold text-[#0B0F2A] hover:bg-[#E7E7E7]"
+                              title="View team details"
+                            >
+                              <span>Team: {a.team.name}</span>
+
+                              {/* avatars */}
+                              <div className="flex -space-x-2">
+                                {a.team.members.slice(0, 3).map((m) => (
+                                  <img
+                                    key={m.email}
+                                    src={m.avatar}
+                                    alt={m.name}
+                                    className="h-7 w-7 rounded-full border-2 border-white"
+                                  />
+                                ))}
+                              </div>
+
+                              {/* plus (quick add SL) */}
+                              <span className="ml-1 inline-flex h-7 w-7 items-center justify-center rounded-full bg-white text-[#0B0F2A] shadow">
+                                <IconPlus className="h-4 w-4" />
+                              </span>
+                            </button>
+
                             <div className="flex-1" />
 
                             {/* View details */}
@@ -718,7 +744,42 @@ export default function TasksManagement() {
       )}
 
 
-      
+      {/* Team details modal */}
+      {teamModalApp && (
+        <ModalShell
+          title={`Team Details — ${teamModalApp.team.name}`}
+          onClose={() => setTeamModalAppId(null)}
+          wide
+        >
+          <div className="space-y-4">
+            <div className="rounded-2xl bg-[#F5F5F5] p-4 text-sm text-[#0B0F2A]/80">
+              (Static now) Later you can allow “Add SL” and manage members here.
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              {teamModalApp.team.members.map((m) => (
+                <div key={m.email} className="flex items-center gap-3 rounded-2xl border border-black/10 p-4">
+                  <img src={m.avatar} alt={m.name} className="h-10 w-10 rounded-full" />
+                  <div className="min-w-0">
+                    <div className="font-bold text-[#0B0F2A]">{m.name}</div>
+                    <div className="text-sm text-[#0B0F2A]/70 truncate">{m.email}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex justify-end">
+              <button
+                onClick={() => setTeamModalAppId(null)}
+                className="rounded-full bg-[#0B0F2A] px-6 py-3 font-semibold text-white"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </ModalShell>
+      )}
+
       {/* Edit remarks modal */}
       {editRemarkAppId && (
         <ModalShell title={`Edit Remarks — ${editRemarkAppId}`} onClose={() => setEditRemarkAppId(null)} wide>
