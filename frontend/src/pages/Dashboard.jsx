@@ -252,7 +252,6 @@ function SectionCard({ title, countBadge, rows, actionLabel, onActionClick, show
                 <th>Former Institution</th>
                 <th>Requested Subject</th>
                 <th>Type</th>
-                <th>Status</th>
               </tr>
             </thead>
 
@@ -279,7 +278,6 @@ function SectionCard({ title, countBadge, rows, actionLabel, onActionClick, show
                   <td className="pr-4">{row.former_institution || "-"}</td>
                   <td className="pr-4">{row.requested_subject || "-"}</td>
                   <td className="pr-4">{row.type || "-"}</td>
-                  <td className="pr-4">{`${row.pl_status || "-"} / ${row.sl_status || "-"} / ${row.registry_status || "-"}`}</td>
                 </tr>
               ))}
             </tbody>
@@ -317,18 +315,25 @@ export default function Dashboard() {
     load();
   }, []);
 
-  // ✅ simple rule for prototype:
-  // - Pending Actions = status "In Progress" (or "Pending")
-  // - Waiting on SL = status "Waiting on SL"
-  const pendingActions = useMemo(
-    () => apps.filter(a => ["Pending", "In Progress"].includes(a.status)),
-    [apps]
-  );
+  // ✅ PL Home rules (prototype)
+  // Pending actions for PL when:
+  // 1) pl_status = "To Be Assign"
+  // OR
+  // 2) pl_status = "To Be Review" AND SL already decided
+  const pendingActions = useMemo(() => {
+    return apps.filter(a => {
+      const pl = a.pl_status;
+      const sl = a.sl_status;
+      const slDone = ["Approved", "Rejected"].includes(sl);
+      return pl === "To Be Assign" || (pl === "To Be Review" && slDone);
+    });
+  }, [apps]);
 
-  const waitingOnSL = useMemo(
-    () => apps.filter(a => a.status === "Waiting on SL"),
-    [apps]
-  );
+  // Waiting on Subject Lecturers when SL is currently reviewing
+  const waitingOnSL = useMemo(() => {
+    return apps.filter(a => a.sl_status === "To Be Review");
+  }, [apps]);
+
 
   const handleReview = (row) => {
     // your current route uses row.id in URL; keep that consistent
