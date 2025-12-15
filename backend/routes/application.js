@@ -64,16 +64,22 @@ router.get("/", async (req, res) => {
     }
 
     const sql = `
-      SELECT id, application_id, date_submitted, student_id, student_name,
-            academic_session, qualification, former_institution, requested_subject,
-            type,
-            pl_status, sl_status, registry_status,
-            ai_score, ai_decision, final_decision, remarks
-      FROM applications
+      SELECT 
+        a.id, a.application_id, a.date_submitted, a.student_id, a.student_name,
+        a.academic_session, a.qualification, a.former_institution, a.requested_subject,
+        a.type,
+        a.pl_status, a.sl_status, a.registry_status,
+        a.ai_score, a.ai_decision, a.final_decision, a.remarks,
+        a.assigned_to,
+        u.name  AS sl_name,
+        u.email AS sl_email
+      FROM applications a
+      LEFT JOIN users u ON u.id = a.assigned_to
       ${where.length ? "WHERE " + where.join(" AND ") : ""}
-      ORDER BY date_submitted DESC, id DESC
+      ORDER BY a.date_submitted DESC, a.id DESC
       LIMIT 200;
     `;
+
 
     const result = await pool.query(sql, vals);
     res.json(result.rows);

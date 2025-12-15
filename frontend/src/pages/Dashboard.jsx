@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 
 function buildMailtoForReminder(row) {
-  const to = (row.lecturer_email || "").trim(); // optional if you store it later
+  const to = (row.sl_email || "").trim();
   const subject = `[Reminder] Action needed for Application ${row.application_id || row.id}`;
   const body = `
 Hi,
@@ -157,8 +157,8 @@ export default function Dashboard() {
   };
 
   const handleRemind = (row) => {
-    if (!row.lecturer_email) {
-      alert("No lecturer email found (prototype).");
+    if (!row.sl_email) {
+      alert("No Subject Lecturer email found yet. Assign an SL first.");
       return;
     }
     window.location.href = buildMailtoForReminder(row);
