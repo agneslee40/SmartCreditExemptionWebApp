@@ -1,36 +1,48 @@
+// backend/routes/users.js
 import express from "express";
 import pool from "../config/db.js";
 
 const router = express.Router();
 
 /**
- * GET /api/users?role=SL
- * Returns basic user list for dropdown/search (id, name, email, role)
+ * GET /api/users
+ * Optional query:
+ *  - role=SL (or PL/Admin)
+ *  - q=search text (matches name/email)
+ *
+ * Example:
+ *  GET http://localhost:5000/api/users?role=SL&q=demo
  */
 router.get("/", async (req, res) => {
   try {
-    const { role } = req.query;
+    const { role, q } = req.query;
 
+    const where = [];
     const vals = [];
-    let where = "";
 
     if (role) {
       vals.push(role);
-      where = `WHERE role = $1`;
+      where.push(`role = $${vals.length}`);
     }
 
-    const result = await pool.query(
-      `SELECT id, name, email, role
-       FROM users
-       ${where}
-       ORDER BY name ASC`,
-      vals
-    );
+    if (q) {
+      vals.push(`%${q}%`);
+      where.push(`(name ILIKE $${vals.length} OR email ILIKE $${vals.length})`);
+    }
 
-    res.json(result.rows);
+    const sql = `
+      SELECT id, name, email, role
+      FROM users
+      ${where.length ? "WHERE " + where.join(" AND ") : ""}
+      ORDER BY name ASC
+      LIMIT 50;
+    `;
+
+    const result = await pool.query(sql, vals);
+    return res.json(result.rows);
   } catch (err) {
     console.error("GET /users error:", err);
-    res.status(500).json({ error: "Failed to fetch users" });
+    return res.status(500).json({ error: "Failed to fetch users" });
   }
 });
 

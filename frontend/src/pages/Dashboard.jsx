@@ -2,6 +2,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
+import AssignSLModal from "../components/AssignSLModal";
+
 
 function buildMailtoForReminder(row) {
   const to = (row.sl_email || "").trim();
@@ -99,6 +101,13 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const [apps, setApps] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [assignTarget, setAssignTarget] = useState(null);
+
+  const openAssignModal = (row) => {
+    setAssignTarget(row);
+    setAssignOpen(true);
+  };
 
   useEffect(() => {
     const load = async () => {
@@ -115,6 +124,8 @@ export default function Dashboard() {
     };
     load();
   }, []);
+
+  
 
   // ✅ PL Home rules (based on pl_status + sl_status)
   const pendingActions = useMemo(() => {
@@ -151,9 +162,10 @@ export default function Dashboard() {
     navigate(`/tasks/applications/${row.id}/review`);
   };
 
-  const handleAssign = (row) => {
+    const handleAssign = (row) => {
     // Send PL to the application details page, where you can add an "Assign SL" UI later
-    navigate(`/tasks/applications/${row.id}`);
+    openAssignModal(row);
+    return;
   };
 
   const handleRemind = (row) => {
@@ -192,6 +204,15 @@ export default function Dashboard() {
         getActionLabel={() => "Remind"}
         onActionClick={handleRemind}
         showTip
+      />
+
+      <AssignSLModal
+        open={assignOpen}
+        onClose={() => setAssignOpen(false)}
+        application={assignTarget}
+        onAssigned={() => {
+          window.location.reload();
+        }}
       />
 
     </div>
