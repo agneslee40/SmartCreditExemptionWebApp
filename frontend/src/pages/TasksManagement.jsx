@@ -224,6 +224,16 @@ export default function TasksManagement() {
   const [toast, setToast] = useState("");
 
   const [showFilterPanel, setShowFilterPanel] = useState(false);
+  const [sortBy, setSortBy] = useState("latest"); // latest | oldest | az | za
+
+  const [fType, setFType] = useState("All"); // All | Credit Exemption | Credit Transfer
+  const [fPl, setFPl] = useState("All"); // All | To Be Assign | Assigned | To Be Review | Approved | Rejected
+  const [fSl, setFSl] = useState("All"); // All | Pending | To Be Review | Approved | Rejected
+  const [fReg, setFReg] = useState("All"); // All | Pending | Approved | Rejected
+
+  const [fAssignedTo, setFAssignedTo] = useState("All"); 
+  // All | (later: actual SL names/emails)
+
   const [teamModalAppId, setTeamModalAppId] = useState(null);
 
   const [editRemarkAppId, setEditRemarkAppId] = useState(null);
@@ -292,28 +302,59 @@ export default function TasksManagement() {
   const filteredApps = useMemo(() => {
     let list = [...apps];
 
-    // quick tabs
+    // -------- Tabs --------
     if (tab === "In Progress") list = list.filter((a) => a.progress === "In Progress");
     if (tab === "Completed") list = list.filter((a) => a.progress === "Completed");
     if (tab === "Credit Exemption") list = list.filter((a) => a.type === "Credit Exemption");
     if (tab === "Credit Transfer") list = list.filter((a) => a.type === "Credit Transfer");
 
-    // search
+    // -------- Search --------
     const q = search.trim().toLowerCase();
     if (q) {
       list = list.filter((a) => {
         return (
-          a.id.toLowerCase().includes(q) ||
-          a.studentId.toLowerCase().includes(q) ||
-          a.studentName.toLowerCase().includes(q) ||
-          a.requestedSubject.toLowerCase().includes(q) ||
-          a.formerInstitution.toLowerCase().includes(q)
+          String(a.id).toLowerCase().includes(q) ||
+          String(a.studentId || "").toLowerCase().includes(q) ||
+          String(a.studentName || "").toLowerCase().includes(q) ||
+          String(a.requestedSubject || "").toLowerCase().includes(q) ||
+          String(a.formerInstitution || "").toLowerCase().includes(q)
         );
       });
     }
 
+    // -------- New Filters --------
+    if (fType !== "All") list = list.filter((a) => a.type === fType);
+
+    // These assume you already mapped DB -> stageStatus like:
+    // stageStatus.subjectLecturer, programmeLeader, registry
+    if (fPl !== "All") list = list.filter((a) => a.stageStatus?.programmeLeader === fPl);
+    if (fSl !== "All") list = list.filter((a) => a.stageStatus?.subjectLecturer === fSl);
+    if (fReg !== "All") list = list.filter((a) => a.stageStatus?.registry === fReg);
+
+    // Team filter (temporary): treat Assigned SL as “team”
+    // If your app object has something like a.team.members, we can filter by SL name/email later.
+    if (fAssignedTo !== "All") {
+      list = list.filter((a) => {
+        const members = a.team?.members || [];
+        return members.some((m) => (m.email || "").toLowerCase() === fAssignedTo.toLowerCase());
+      });
+    }
+
+    // -------- Sorting --------
+    const getDateValue = (a) => {
+      // supports both: "2025-12-14" OR "7th January 2025"
+      const d = new Date(a.date);
+      if (!isNaN(d.getTime())) return d.getTime();
+      return 0;
+    };
+
+    if (sortBy === "latest") list.sort((a, b) => getDateValue(b) - getDateValue(a));
+    if (sortBy === "oldest") list.sort((a, b) => getDateValue(a) - getDateValue(b));
+    if (sortBy === "az") list.sort((a, b) => String(a.studentName || "").localeCompare(String(b.studentName || "")));
+    if (sortBy === "za") list.sort((a, b) => String(b.studentName || "").localeCompare(String(a.studentName || "")));
+
     return list;
-  }, [apps, tab, search]);
+  }, [apps, tab, search, sortBy, fType, fPl, fSl, fReg, fAssignedTo]);
 
   const openTeamModal = (appId) => setTeamModalAppId(appId);
 
@@ -582,20 +623,126 @@ export default function TasksManagement() {
 
       {/* Filter panel placeholder (for later: date, subject, programme, team, sort, etc.) */}
       {showFilterPanel && (
-        <ModalShell title="Filters (Coming next)" onClose={() => setShowFilterPanel(false)}>
-          <div className="space-y-4 text-sm text-[#0B0F2A]/80">
+        <ModalShell title="Filters" onClose={() => setShowFilterPanel(false)} wide>
+          <div className="grid grid-cols-2 gap-4 text-sm text-[#0B0F2A]">
+
+            {/* Sort */}
             <div className="rounded-2xl bg-[#F5F5F5] p-4">
-              Put your advanced filters here later (date range, subject, programme, team, sort, etc.)
+              <div className="font-bold mb-2">Sort</div>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className="w-full rounded-xl border border-black/10 bg-white px-3 py-2 outline-none"
+              >
+                <option value="latest">Latest</option>
+                <option value="oldest">Oldest</option>
+                <option value="az">Student Name (A–Z)</option>
+                <option value="za">Student Name (Z–A)</option>
+              </select>
             </div>
+
+            {/* Type */}
+            <div className="rounded-2xl bg-[#F5F5F5] p-4">
+              <div className="font-bold mb-2">Type</div>
+              <select
+                value={fType}
+                onChange={(e) => setFType(e.target.value)}
+                className="w-full rounded-xl border border-black/10 bg-white px-3 py-2 outline-none"
+              >
+                <option value="All">All</option>
+                <option value="Credit Exemption">Credit Exemption</option>
+                <option value="Credit Transfer">Credit Transfer</option>
+              </select>
+            </div>
+
+            {/* SL Status */}
+            <div className="rounded-2xl bg-[#F5F5F5] p-4">
+              <div className="font-bold mb-2">Subject Lecturer Status</div>
+              <select
+                value={fSl}
+                onChange={(e) => setFSl(e.target.value)}
+                className="w-full rounded-xl border border-black/10 bg-white px-3 py-2 outline-none"
+              >
+                <option value="All">All</option>
+                <option value="Pending">Pending</option>
+                <option value="To Be Review">To Be Review</option>
+                <option value="Approved">Approved</option>
+                <option value="Rejected">Rejected</option>
+              </select>
+            </div>
+
+            {/* PL Status */}
+            <div className="rounded-2xl bg-[#F5F5F5] p-4">
+              <div className="font-bold mb-2">Programme Leader Status</div>
+              <select
+                value={fPl}
+                onChange={(e) => setFPl(e.target.value)}
+                className="w-full rounded-xl border border-black/10 bg-white px-3 py-2 outline-none"
+              >
+                <option value="All">All</option>
+                <option value="To Be Assign">To Be Assign</option>
+                <option value="Assigned">Assigned</option>
+                <option value="To Be Review">To Be Review</option>
+                <option value="Approved">Approved</option>
+                <option value="Rejected">Rejected</option>
+              </select>
+            </div>
+
+            {/* Registry Status */}
+            <div className="rounded-2xl bg-[#F5F5F5] p-4">
+              <div className="font-bold mb-2">Registry Status</div>
+              <select
+                value={fReg}
+                onChange={(e) => setFReg(e.target.value)}
+                className="w-full rounded-xl border border-black/10 bg-white px-3 py-2 outline-none"
+              >
+                <option value="All">All</option>
+                <option value="Pending">Pending</option>
+                <option value="Approved">Approved</option>
+                <option value="Rejected">Rejected</option>
+              </select>
+            </div>
+
+            {/* Team filter (temporary) */}
+            <div className="rounded-2xl bg-[#F5F5F5] p-4">
+              <div className="font-bold mb-2">Assigned SL (Team)</div>
+              <input
+                value={fAssignedTo === "All" ? "" : fAssignedTo}
+                onChange={(e) => setFAssignedTo(e.target.value || "All")}
+                placeholder="Type SL email (optional)"
+                className="w-full rounded-xl border border-black/10 bg-white px-3 py-2 outline-none"
+              />
+              <div className="mt-2 text-xs text-[#0B0F2A]/60">
+                (For now, filter by SL email. Later we’ll replace this with a dropdown from real users.)
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-6 flex justify-end gap-3">
+            <button
+              onClick={() => {
+                setSortBy("latest");
+                setFType("All");
+                setFPl("All");
+                setFSl("All");
+                setFReg("All");
+                setFAssignedTo("All");
+              }}
+              className="rounded-full bg-[#EFEFEF] px-6 py-3 font-semibold text-[#0B0F2A]"
+            >
+              Reset
+            </button>
+
             <button
               onClick={() => setShowFilterPanel(false)}
               className="rounded-full bg-[#0B0F2A] px-6 py-3 font-semibold text-white"
             >
-              Close
+              Apply
             </button>
           </div>
         </ModalShell>
       )}
+
 
       {/* Team details modal */}
       {teamModalApp && (
