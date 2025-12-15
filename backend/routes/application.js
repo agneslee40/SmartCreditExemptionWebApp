@@ -113,37 +113,73 @@ router.post("/", upload.single("document"), async (req, res) => {
       application_id,
       student_name,
       student_id,
-      academic_session,
+      intake,          // e.g. "2025-01"
+      semester,        // e.g. "1"
       qualification,
       former_institution,
       requested_subject,
-      type,          // 'Credit Exemption' | 'Credit Transfer'
-      remarks
+      type,            // "Credit Exemption" | "Credit Transfer"
+      remarks,
+      date_submitted   // e.g. "15/12/2025"
     } = req.body;
+
+    // helper: convert "dd/mm/yyyy" -> "yyyy-mm-dd" for PostgreSQL DATE
+    const toISODate = (s) => {
+      if (!s) return null;
+      const m = String(s).trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      if (!m) return null;
+      const dd = m[1].padStart(2, "0");
+      const mm = m[2].padStart(2, "0");
+      const yyyy = m[3];
+      return `${yyyy}-${mm}-${dd}`;
+    };
+
+    // derive academic_session from intake+semester (example: "202501 | 1")
+    const academic_session =
+      intake && semester ? `${String(intake).replace("-", "")} | ${semester}` : null;
 
     const document_path = req.file ? req.file.path : null;
 
     const result = await pool.query(
       `INSERT INTO applications
-       (application_id, student_name, student_id, academic_session,
-        qualification, former_institution, requested_subject, type,
-        status, remarks, document_path)
+        (application_id, student_name, student_id,
+         intake, semester, academic_session,
+         qualification, former_institution, requested_subject,
+         type, date_submitted,
+         status, remarks, document_path)
        VALUES
-       ($1,$2,$3,$4,$5,$6,$7,$8,'In Progress',$9,$10)
+        ($1,$2,$3,
+         $4,$5,$6,
+         $7,$8,$9,
+         $10,$11,
+         $12,$13,$14)
        RETURNING *`,
       [
-        application_id, student_name, student_id, academic_session,
-        qualification, former_institution, requested_subject, type,
-        remarks || null, document_path
+        application_id,
+        student_name,
+        student_id,
+        intake || null,
+        semester || null,
+        academic_session,
+        qualification || null,
+        former_institution || null,
+        requested_subject || null,
+        type || null,
+        toISODate(date_submitted) || null,
+        "To Be Assign",              // your initial status
+        remarks || null,
+        document_path,
       ]
     );
 
     res.status(201).json({ message: "Application created", application: result.rows[0] });
   } catch (err) {
     console.error("POST /applications error:", err);
-    res.status(500).json({ error: "Failed to create application" });
+    res.status(500).json({ error: "Failed to create application", details: err.message });
   }
 });
+
+
 
 /* =========================================================
    4) PATCH /api/applications/:id
