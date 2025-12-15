@@ -279,7 +279,7 @@ function SectionCard({ title, countBadge, rows, actionLabel, onActionClick, show
                   <td className="pr-4">{row.former_institution || "-"}</td>
                   <td className="pr-4">{row.requested_subject || "-"}</td>
                   <td className="pr-4">{row.type || "-"}</td>
-                  <td className="pr-4">{row.status || "-"}</td>
+                  <td className="pr-4">{`${row.pl_status || "-"} / ${row.sl_status || "-"} / ${row.registry_status || "-"}`}</td>
                 </tr>
               ))}
             </tbody>

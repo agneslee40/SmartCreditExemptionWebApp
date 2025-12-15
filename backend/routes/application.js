@@ -65,8 +65,10 @@ router.get("/", async (req, res) => {
 
     const sql = `
       SELECT id, application_id, date_submitted, student_id, student_name,
-             academic_session, qualification, former_institution, requested_subject,
-             type, status, ai_score, ai_decision, final_decision, remarks
+            academic_session, qualification, former_institution, requested_subject,
+            type,
+            pl_status, sl_status, registry_status,
+            ai_score, ai_decision, final_decision, remarks
       FROM applications
       ${where.length ? "WHERE " + where.join(" AND ") : ""}
       ORDER BY date_submitted DESC, id DESC
@@ -143,17 +145,19 @@ router.post("/", upload.single("document"), async (req, res) => {
     const result = await pool.query(
       `INSERT INTO applications
         (application_id, student_name, student_id,
-         intake, semester, academic_session,
-         qualification, former_institution, requested_subject,
-         type, date_submitted,
-         status, remarks, document_path)
-       VALUES
+          intake, semester, academic_session,
+          qualification, former_institution, requested_subject,
+          type, date_submitted,
+          pl_status, sl_status, registry_status,
+          remarks, document_path)
+        VALUES
         ($1,$2,$3,
-         $4,$5,$6,
-         $7,$8,$9,
-         $10,$11,
-         $12,$13,$14)
-       RETURNING *`,
+          $4,$5,$6,
+          $7,$8,$9,
+          $10,$11,
+          $12,$13,$14,
+          $15,$16)
+        RETURNING *`,
       [
         application_id,
         student_name,
@@ -166,7 +170,9 @@ router.post("/", upload.single("document"), async (req, res) => {
         requested_subject || null,
         type || null,
         toISODate(date_submitted) || null,
-        "To Be Assign",              // your initial status
+        "To Be Assign",
+        "Pending",
+        "Pending",
         remarks || null,
         document_path,
       ]
@@ -229,11 +235,14 @@ router.post("/:id/documents", upload.array("documents", 10), async (req, res) =>
 router.patch("/:id", async (req, res) => {
   try {
     const {
-      status,            // 'In Progress' | 'Approved' | 'Rejected' | ...
+      status,            //to be removed later
       final_decision,    // 'approved' | 'rejected'
       ai_score,          // 0.0 - 1.0
       ai_decision,       // 'approve' | 'reject'
-      remarks
+      remarks,
+      pl_status,      
+      sl_status, 
+      registry_status
     } = req.body;
 
     // Build dynamic SET
@@ -244,6 +253,9 @@ router.patch("/:id", async (req, res) => {
     if (ai_score !== undefined)       { vals.push(ai_score);       sets.push(`ai_score = $${vals.length}`); }
     if (ai_decision !== undefined)    { vals.push(ai_decision);    sets.push(`ai_decision = $${vals.length}`); }
     if (remarks !== undefined)        { vals.push(remarks);        sets.push(`remarks = $${vals.length}`); }
+    if (pl_status !== undefined)       { vals.push(pl_status);       sets.push(`pl_status = $${vals.length}`); }
+    if (sl_status !== undefined)       { vals.push(sl_status);       sets.push(`sl_status = $${vals.length}`); }
+    if (registry_status !== undefined) { vals.push(registry_status); sets.push(`registry_status = $${vals.length}`); }
 
     if (sets.length === 0) return res.status(400).json({ error: "Nothing to update" });
 

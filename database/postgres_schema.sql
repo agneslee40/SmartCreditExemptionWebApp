@@ -32,7 +32,10 @@ CREATE TABLE IF NOT EXISTS applications (
   status VARCHAR(50) DEFAULT 'Pending',
   remarks TEXT,
   document_path TEXT,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  pl_status VARCHAR(50) DEFAULT 'To Be Assign',
+  sl_status VARCHAR(50) DEFAULT 'Pending',
+  registry_status VARCHAR(50) DEFAULT 'Pending',
 );
 
 -- ============================
