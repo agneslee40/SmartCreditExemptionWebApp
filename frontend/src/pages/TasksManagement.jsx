@@ -5,94 +5,6 @@ import { api } from "../api/client";
 
 const TABS = ["All", "In Progress", "Credit Exemption", "Credit Transfer", "Completed"];
 
-{/*
-const initialApps = [
-  {
-    id: "A001",
-    date: "7th January 2025",
-    studentId: "22115737",
-    studentName: "Lee Wen Xuan",
-    academicSession: "202301 | 1",
-    prevQual: "Bahasa Melayu",
-    formerInstitution: "Wesley Methodist School Kuala Lumpur (INTERNATIONAL)",
-    requestedSubject: "MPU 3213 Malay Language for Communication",
-    type: "Credit Exemption",
-    progress: "In Progress",
-    team: {
-      name: "Computer Science",
-      members: [
-        { name: "Programme Leader", email: "pl@sunway.edu.my", avatar: "https://i.pravatar.cc/100?img=32" },
-        { name: "Subject Lecturer 1", email: "sl1@sunway.edu.my", avatar: "https://i.pravatar.cc/100?img=12" },
-        { name: "Subject Lecturer 2", email: "sl2@sunway.edu.my", avatar: "https://i.pravatar.cc/100?img=15" },
-      ],
-    },
-    stageStatus: {
-      subjectLecturer: "Approved",
-      programmeLeader: "Approved",
-      registry: "Pending",
-      registryReminderSent: false,
-    },
-    remarks: [
-      { by: "Subject Lecturer", text: "Content similarity acceptable." },
-      { by: "Programme Leader", text: "Proceed based on hours + grade." },
-    ],
-  },
-  {
-    id: "A002",
-    date: "7th January 2025",
-    studentId: "22115738",
-    studentName: "Lim Jia Hui",
-    academicSession: "202301 | 1",
-    prevQual: "Bahasa Melayu",
-    formerInstitution: "Wesley Methodist School Kuala Lumpur (INTERNATIONAL)",
-    requestedSubject: "MPU 3213 Malay Language for Communication",
-    type: "Credit Transfer",
-    progress: "In Progress",
-    team: {
-      name: "Computer Science",
-      members: [
-        { name: "Programme Leader", email: "pl@sunway.edu.my", avatar: "https://i.pravatar.cc/100?img=18" },
-        { name: "Subject Lecturer", email: "sl@sunway.edu.my", avatar: "https://i.pravatar.cc/100?img=22" },
-      ],
-    },
-    stageStatus: {
-      subjectLecturer: "Approved",
-      programmeLeader: "Approved",
-      registry: "Pending",
-      registryReminderSent: false,
-    },
-    remarks: [],
-  },
-  {
-    id: "A003",
-    date: "7th January 2025",
-    studentId: "22115739",
-    studentName: "Ng Chee Han",
-    academicSession: "202301 | 1",
-    prevQual: "Bahasa Melayu",
-    formerInstitution: "Wesley Methodist School Kuala Lumpur (INTERNATIONAL)",
-    requestedSubject: "MPU 3213 Malay Language for Communication",
-    type: "Credit Exemption",
-    progress: "Completed",
-    team: {
-      name: "Computer Science",
-      members: [
-        { name: "Programme Leader", email: "pl@sunway.edu.my", avatar: "https://i.pravatar.cc/100?img=41" },
-        { name: "Subject Lecturer", email: "sl@sunway.edu.my", avatar: "https://i.pravatar.cc/100?img=45" },
-      ],
-    },
-    stageStatus: {
-      subjectLecturer: "Approved",
-      programmeLeader: "Approved",
-      registry: "Approved",
-      registryReminderSent: true,
-    },
-    remarks: [{ by: "Registry", text: "Processed in system." }],
-  },
-];
-
-*/}
-
 // ---------- tiny inline icons (no extra library needed) ----------
 function IconFilter({ className = "" }) {
   return (
@@ -185,8 +97,9 @@ function Pill({ children, className = "" }) {
 
 function StatusBadge({ label, tone, rightSlot }) {
   const toneMap = {
-    orange: "bg-[#FF7A2F] text-black",
-    gray: "bg-[#D9D9D9] text-[#0B0F2A]",
+    orange: "bg-[#FF7A2F] text-black",   // Approved
+    red: "bg-[#FF3B30] text-white",      // Rejected
+    gray: "bg-[#D9D9D9] text-[#0B0F2A]", // Pending / To Be Review / etc.
   };
   return (
     <div className="flex items-center gap-2">
@@ -290,6 +203,12 @@ const formatDateNice = (iso) => {
   // show yyyy-mm-dd like your dashboard
   return String(iso).slice(0, 10);
 };
+
+function toneForStatus(status) {
+  if (status === "Approved") return "orange";
+  if (status === "Rejected") return "red";
+  return "gray";
+}
 
 
 // ---------- main page ----------
@@ -535,21 +454,21 @@ export default function TasksManagement() {
                               <div className="w-[110px] text-[#0B0F2A]/70">Subject Lecturer</div>
                               <StatusBadge
                                 label={a.stageStatus.subjectLecturer}
-                                tone={a.stageStatus.subjectLecturer === "Approved" ? "orange" : "gray"}
+                                tone={toneForStatus(a.stageStatus.subjectLecturer)}
                               />
                             </div>
                             <div className="flex items-center gap-3">
                               <div className="w-[110px] text-[#0B0F2A]/70">Programme Leader</div>
                               <StatusBadge
                                 label={a.stageStatus.programmeLeader}
-                                tone={a.stageStatus.programmeLeader === "Approved" ? "orange" : "gray"}
+                                tone={toneForStatus(a.stageStatus.programmeLeader)}
                               />
                             </div>
                             <div className="flex items-center gap-3">
                               <div className="w-[110px] text-[#0B0F2A]/70">Registry</div>
                               <StatusBadge
                                 label={a.stageStatus.registry}
-                                tone={a.stageStatus.registry === "Approved" ? "orange" : "gray"}
+                                tone={toneForStatus(a.stageStatus.registry)}
                                 rightSlot={
                                   a.stageStatus.registry === "Pending" ? (
                                     <button
