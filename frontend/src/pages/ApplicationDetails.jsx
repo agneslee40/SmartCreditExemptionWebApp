@@ -86,12 +86,21 @@ export default function ApplicationDetails() {
   const [docs, setDocs] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  // sorting for documents
+  const [docSort, setDocSort] = useState({ key: "file_name", dir: "asc" });
+
   useEffect(() => {
     const load = async () => {
       try {
         setLoading(true);
-        const res = await api.get(`/applications/${id}`);
-        setApp(res.data);
+
+        const [appRes, docsRes] = await Promise.all([
+          api.get(`/applications/${id}`),
+          api.get(`/applications/${id}/documents`),
+        ]);
+
+        setApp(appRes.data);
+        setDocs(docsRes.data || []);
       } catch (e) {
         console.error(e);
         alert("Failed to load application details.");
@@ -99,8 +108,10 @@ export default function ApplicationDetails() {
         setLoading(false);
       }
     };
+
     load();
   }, [id]);
+
 
   // --- mock data to match your figma fields ---
   const application = {
@@ -146,23 +157,60 @@ export default function ApplicationDetails() {
   const [sortBy, setSortBy] = useState({ key: null, dir: "asc" });
 
   const sortedDocs = useMemo(() => {
-    const list = [...application.docs];
-    if (!sortBy.key) return list;
+    const list = [...docs];
+    const { key, dir } = docSort;
 
-    const dir = sortBy.dir === "asc" ? 1 : -1;
-    return list.sort((a, b) => {
-      const av = String(a[sortBy.key] ?? "");
-      const bv = String(b[sortBy.key] ?? "");
-      return av.localeCompare(bv) * dir;
+    list.sort((a, b) => {
+      const av = a?.[key];
+      const bv = b?.[key];
+
+      // null last
+      if (av == null && bv == null) return 0;
+      if (av == null) return 1;
+      if (bv == null) return -1;
+
+      // numbers
+      if (typeof av === "number" && typeof bv === "number") {
+        return dir === "asc" ? av - bv : bv - av;
+      }
+
+      // dates
+      if (key === "uploaded_at") {
+        const ad = new Date(av).getTime();
+        const bd = new Date(bv).getTime();
+        return dir === "asc" ? ad - bd : bd - ad;
+      }
+
+      // strings
+      const as = String(av).toLowerCase();
+      const bs = String(bv).toLowerCase();
+      if (as < bs) return dir === "asc" ? -1 : 1;
+      if (as > bs) return dir === "asc" ? 1 : -1;
+      return 0;
     });
-  }, [application.docs, sortBy]);
+
+    return list;
+  }, [docs, docSort]);
 
   const toggleSort = (key) => {
-    setSortBy((prev) => {
+    setDocSort((prev) => {
       if (prev.key !== key) return { key, dir: "asc" };
       return { key, dir: prev.dir === "asc" ? "desc" : "asc" };
     });
   };
+
+  const formatBytes = (bytes) => {
+    if (bytes == null) return "-";
+    const units = ["B", "KB", "MB", "GB"];
+    let b = bytes;
+    let i = 0;
+    while (b >= 1024 && i < units.length - 1) {
+      b /= 1024;
+      i++;
+    }
+    return `${b.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+  };
+
 
   const goBack = () => {
     // goes back to Tasks page like figma, even if user opened in new tab
@@ -257,61 +305,71 @@ export default function ApplicationDetails() {
         {/* Supporting Documents */}
         <CardShell title="Supporting Documents">
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="text-[#0B0F2A]/75">
-                <tr>
-                  <th className="pb-4 font-semibold">
-                    <button
-                      onClick={() => toggleSort("name")}
-                      className="inline-flex items-center gap-2 hover:text-[#0B0F2A]"
-                    >
-                      Name <IconSort className="h-4 w-4" />
+            <table className="w-full text-left">
+              <thead className="text-[#0B0F2A]/70">
+                <tr className="border-b border-black/10">
+                  <th className="py-4 pr-4 text-sm font-semibold">
+                    <button onClick={() => toggleSort("file_name")} className="inline-flex items-center gap-2">
+                      Name <span className="opacity-50">≡</span>
                     </button>
                   </th>
-                  <th className="pb-4 font-semibold">Type</th>
-                  <th className="pb-4 font-semibold">Details</th>
-                  <th className="pb-4 font-semibold">
-                    <button
-                      onClick={() => toggleSort("size")}
-                      className="inline-flex items-center gap-2 hover:text-[#0B0F2A]"
-                    >
-                      File Size <IconSort className="h-4 w-4" />
+                  <th className="py-4 px-4 text-sm font-semibold">Type</th>
+                  <th className="py-4 px-4 text-sm font-semibold">Details</th>
+                  <th className="py-4 px-4 text-sm font-semibold">
+                    <button onClick={() => toggleSort("file_size")} className="inline-flex items-center gap-2">
+                      File Size <span className="opacity-50">≡</span>
                     </button>
                   </th>
-                  <th className="pb-4" />
-                  <th className="pb-4" />
+                  <th className="py-4 pl-4 text-sm font-semibold text-right"></th>
                 </tr>
               </thead>
 
-              <tbody className="text-[#0B0F2A]">
-                {sortedDocs.map((d, idx) => (
-                  <tr key={idx} className="border-t border-black/10">
-                    <td className="py-5 underline">{d.name}</td>
-                    <td className="py-5">{d.type}</td>
-                    <td className="py-5">{d.details}</td>
-                    <td className="py-5">{d.size}</td>
-                    <td className="py-5">
-                      <button
-                        className="rounded-lg p-2 text-[#0B0F2A] hover:bg-black/5"
-                        title="View"
-                        onClick={() => alert("View PDF (wire later)")}
-                      >
-                        <IconEye className="h-5 w-5" />
-                      </button>
+              <tbody>
+                {sortedDocs.map((d) => (
+                  <tr key={d.id} className="border-b border-black/10 last:border-0">
+                    <td className="py-5 pr-4 text-sm">
+                      <span className="underline underline-offset-4">{d.file_name}</span>
                     </td>
-                    <td className="py-5">
-                      <button
-                        className="rounded-lg p-2 text-[#0B0F2A] hover:bg-black/5"
-                        title="Download"
-                        onClick={() => alert("Download (wire later)")}
-                      >
-                        <IconDownload className="h-5 w-5" />
-                      </button>
+                    <td className="py-5 px-4 text-sm">{d.file_type || "-"}</td>
+                    <td className="py-5 px-4 text-sm">
+                      {d.uploaded_at ? String(d.uploaded_at).slice(0, 10) : "-"}
+                    </td>
+                    <td className="py-5 px-4 text-sm">{formatBytes(d.file_size)}</td>
+
+                    <td className="py-5 pl-4">
+                      <div className="flex items-center justify-end gap-6">
+                        {/* View (eye) */}
+                        <button
+                          onClick={() => window.open(`http://localhost:5000/api/applications/documents/${d.id}/view`, "_blank")}
+                          className="rounded-lg p-2 hover:bg-black/5"
+                          title="View"
+                        >
+                          👁️
+                        </button>
+
+                        {/* Download */}
+                        <button
+                          onClick={() => window.open(`http://localhost:5000/api/applications/documents/${d.id}/download`, "_blank")}
+                          className="rounded-lg p-2 hover:bg-black/5"
+                          title="Download"
+                        >
+                          ⬇️
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
+
+                {sortedDocs.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="py-10 text-center text-sm text-[#0B0F2A]/55">
+                      No documents uploaded yet.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
+
           </div>
         </CardShell>
       </div>

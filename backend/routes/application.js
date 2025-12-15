@@ -109,31 +109,89 @@ router.get("/:id", async (req, res) => {
 router.get("/:id/documents", async (req, res) => {
   try {
     const appId = Number(req.params.id);
-    if (!Number.isFinite(appId)) {
-      return res.status(400).json({ error: "Invalid application id" });
-    }
+    if (!Number.isFinite(appId)) return res.status(400).json({ error: "Invalid application id" });
 
-    const result = await pool.query(
-      `SELECT id, application_id, file_name, file_type, file_path, uploaded_at
+    const r = await pool.query(
+      `SELECT id, file_name, file_type, file_path, uploaded_at
        FROM documents
        WHERE application_id = $1
        ORDER BY uploaded_at DESC, id DESC`,
       [appId]
     );
 
-    // Convert Windows path to a public URL
-    const docs = result.rows.map((d) => {
-      const file = String(d.file_path || "").split(/[\\/]/).pop(); // gets filename only
-      return {
-        ...d,
-        url: file ? `http://localhost:5000/uploads/${file}` : null,
-      };
+    // Add file_size (best-effort). If file doesn't exist, size = null.
+    const docs = r.rows.map((d) => {
+      try {
+        const stat = fs.statSync(d.file_path);
+        return { ...d, file_size: stat.size };
+      } catch {
+        return { ...d, file_size: null };
+      }
     });
 
     res.json(docs);
   } catch (err) {
     console.error("GET /applications/:id/documents error:", err);
     res.status(500).json({ error: "Failed to fetch documents" });
+  }
+});
+
+// GET /api/applications/documents/:docId/download
+router.get("/documents/:docId/download", async (req, res) => {
+  try {
+    const docId = Number(req.params.docId);
+    if (!Number.isFinite(docId)) return res.status(400).json({ error: "Invalid doc id" });
+
+    const r = await pool.query(
+      `SELECT id, file_name, file_type, file_path
+       FROM documents
+       WHERE id = $1`,
+      [docId]
+    );
+    if (r.rows.length === 0) return res.status(404).json({ error: "Document not found" });
+
+    const doc = r.rows[0];
+
+    if (!fs.existsSync(doc.file_path)) {
+      return res.status(404).json({ error: "File missing on server" });
+    }
+
+    res.setHeader("Content-Type", doc.file_type || "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${doc.file_name}"`);
+    fs.createReadStream(doc.file_path).pipe(res);
+  } catch (err) {
+    console.error("GET /applications/documents/:docId/download error:", err);
+    res.status(500).json({ error: "Failed to download document" });
+  }
+});
+
+// GET /api/applications/documents/:docId/view
+router.get("/documents/:docId/view", async (req, res) => {
+  try {
+    const docId = Number(req.params.docId);
+    if (!Number.isFinite(docId)) return res.status(400).json({ error: "Invalid doc id" });
+
+    const r = await pool.query(
+      `SELECT id, file_name, file_type, file_path
+       FROM documents
+       WHERE id = $1`,
+      [docId]
+    );
+    if (r.rows.length === 0) return res.status(404).json({ error: "Document not found" });
+
+    const doc = r.rows[0];
+
+    if (!fs.existsSync(doc.file_path)) {
+      return res.status(404).json({ error: "File missing on server" });
+    }
+
+    res.setHeader("Content-Type", doc.file_type || "application/pdf");
+    // inline = open in browser
+    res.setHeader("Content-Disposition", `inline; filename="${doc.file_name}"`);
+    fs.createReadStream(doc.file_path).pipe(res);
+  } catch (err) {
+    console.error("GET /applications/documents/:docId/view error:", err);
+    res.status(500).json({ error: "Failed to view document" });
   }
 });
 
