@@ -235,7 +235,8 @@ router.post("/:id/documents", upload.array("documents", 10), async (req, res) =>
 router.patch("/:id/assign", async (req, res) => {
   try {
     const appId = Number(req.params.id);
-    const { sl_user_id } = req.body;
+    const { sl_user_id } = req.body || {};
+    if (!sl_user_id) return res.status(400).json({ error: "sl_user_id is required" });
 
     if (!Number.isFinite(appId)) return res.status(400).json({ error: "Invalid application id" });
     if (!Number.isFinite(Number(sl_user_id))) return res.status(400).json({ error: "Invalid sl_user_id" });
