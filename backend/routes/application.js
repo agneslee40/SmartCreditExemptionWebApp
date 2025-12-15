@@ -105,6 +105,39 @@ router.get("/:id", async (req, res) => {
   }
 });
 
+// GET /api/applications/:id/documents
+router.get("/:id/documents", async (req, res) => {
+  try {
+    const appId = Number(req.params.id);
+    if (!Number.isFinite(appId)) {
+      return res.status(400).json({ error: "Invalid application id" });
+    }
+
+    const result = await pool.query(
+      `SELECT id, application_id, file_name, file_type, file_path, uploaded_at
+       FROM documents
+       WHERE application_id = $1
+       ORDER BY uploaded_at DESC, id DESC`,
+      [appId]
+    );
+
+    // Convert Windows path to a public URL
+    const docs = result.rows.map((d) => {
+      const file = String(d.file_path || "").split(/[\\/]/).pop(); // gets filename only
+      return {
+        ...d,
+        url: file ? `http://localhost:5000/uploads/${file}` : null,
+      };
+    });
+
+    res.json(docs);
+  } catch (err) {
+    console.error("GET /applications/:id/documents error:", err);
+    res.status(500).json({ error: "Failed to fetch documents" });
+  }
+});
+
+
 /* =========================================================
    3) POST /api/applications
    - Create application + (optional) upload PDF
