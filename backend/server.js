@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 import matchingRoutes from "./routes/matching.js";
 import applicationRoutes from "./routes/application.js";
 import authRoutes from "./routes/auth.js";
+import usersRoutes from "./routes/users.js";
 
 
 dotenv.config();
@@ -17,6 +18,7 @@ app.use(express.json());
 app.use("/api/matching", matchingRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/applications", applicationRoutes);
+app.use("/api/users", usersRoutes);
 
 // DB TEST ROUTE
 import dbTestRoutes from "./routes/testDB.js";
