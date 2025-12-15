@@ -29,13 +29,12 @@ CREATE TABLE IF NOT EXISTS applications (
   ai_score FLOAT,
   ai_decision VARCHAR(20),
   final_decision VARCHAR(20),
-  status VARCHAR(50) DEFAULT 'Pending',
   remarks TEXT,
   document_path TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   pl_status VARCHAR(50) DEFAULT 'To Be Assign',
   sl_status VARCHAR(50) DEFAULT 'Pending',
-  registry_status VARCHAR(50) DEFAULT 'Pending',
+  registry_status VARCHAR(50) DEFAULT 'Pending'
 );
 
 -- ============================

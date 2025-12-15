@@ -35,7 +35,7 @@ const upload = multer({
    ========================================================= */
 router.get("/", async (req, res) => {
   try {
-    const { type, status, session, q } = req.query;
+    const { type, session, q } = req.query;
 
     const where = [];
     const vals = [];
@@ -43,10 +43,6 @@ router.get("/", async (req, res) => {
     if (type) {
       vals.push(type);
       where.push(`type = $${vals.length}`);
-    }
-    if (status) {
-      vals.push(status);
-      where.push(`status = $${vals.length}`);
     }
     if (session) {
       vals.push(session);
@@ -278,7 +274,6 @@ router.patch("/:id/assign", async (req, res) => {
 router.patch("/:id", async (req, res) => {
   try {
     const {
-      status,            //to be removed later
       final_decision,    // 'approved' | 'rejected'
       ai_score,          // 0.0 - 1.0
       ai_decision,       // 'approve' | 'reject'
