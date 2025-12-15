@@ -231,6 +231,42 @@ router.post("/:id/documents", upload.array("documents", 10), async (req, res) =>
   }
 });
 
+// Assign an SL to an application (PL action)
+router.patch("/:id/assign", async (req, res) => {
+  try {
+    const appId = Number(req.params.id);
+    const { sl_user_id } = req.body;
+
+    if (!Number.isFinite(appId)) return res.status(400).json({ error: "Invalid application id" });
+    if (!Number.isFinite(Number(sl_user_id))) return res.status(400).json({ error: "Invalid sl_user_id" });
+
+    // ensure SL exists + role is SL
+    const sl = await pool.query(`SELECT id, name, email FROM users WHERE id = $1 AND role = 'SL'`, [sl_user_id]);
+    if (sl.rows.length === 0) return res.status(404).json({ error: "Subject Lecturer not found" });
+
+    // update application assignment + statuses
+    const updated = await pool.query(
+      `UPDATE applications
+       SET assigned_to = $1,
+           pl_status = 'Assigned',
+           sl_status = 'To Be Review'
+       WHERE id = $2
+       RETURNING *`,
+      [sl_user_id, appId]
+    );
+
+    if (updated.rows.length === 0) return res.status(404).json({ error: "Application not found" });
+
+    res.json({
+      message: "SL assigned",
+      application: updated.rows[0],
+      sl: sl.rows[0],
+    });
+  } catch (err) {
+    console.error("PATCH /applications/:id/assign error:", err);
+    res.status(500).json({ error: "Failed to assign SL" });
+  }
+});
 
 /* =========================================================
    4) PATCH /api/applications/:id
