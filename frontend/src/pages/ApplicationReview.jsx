@@ -1,7 +1,6 @@
 // src/pages/ApplicationReview.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { api } from "../api/client";
 
 /* ------------------ tiny inline icons (no library) ------------------ */
 function IconBack({ className = "" }) {
@@ -237,18 +236,79 @@ function SideIconButton({ active, label, children, onClick }) {
   );
 }
 
-/* ------------------ helper logic ------------------ */
+/* ------------------ mock data (hook to API later) ------------------ */
+const DOCS = [
+  { id: "sunway", name: "CST 2309 Web Programming I", pages: 7 },
+  { id: "transcript", name: "Transcript", pages: 2 },
+  { id: "syllabus", name: "Applicant Syllabus", pages: 5 },
+];
+
+const mockApp = {
+  id: "A001",
+  createdAt: "2025-11-18", // ✅ added (you can format however you like)
+  studentName: "Lee Wen Xuan",
+  studentId: "22115737",
+  type: "Credit Exemption",
+  requestedSubject: "CST 2309 Web Programming I",
+  academicSession: "202301 | 1",
+  prevModule: "MPU 3213 Malay Language for Communication",
+};
+
 const REQUIREMENTS = {
   grade: "Minimum: ≥ C",
   similarity: "Requirement: ≥ 80%",
   credit: "Minimum: 3 credit hours",
 };
 
+const initialHighlights = [
+  {
+    id: "h-grade",
+    key: "grade",
+    label: "Grade",
+    docId: "transcript",
+    page: 1,
+    value: "A+",
+    requirement: REQUIREMENTS.grade,
+    snippet: "Grade: A+",
+  },
+  {
+    id: "h-sim",
+    key: "similarity",
+    label: "Similarity",
+    docId: "sunway",
+    page: 1,
+    value: "81%",
+    requirement: REQUIREMENTS.similarity,
+    snippet: "CST 2309: Introduction to Web Programming",
+  },
+  {
+    id: "h-cred",
+    key: "credit",
+    label: "Credit Hours",
+    docId: "sunway",
+    page: 2,
+    value: "4",
+    requirement: REQUIREMENTS.credit,
+    snippet: "Credit Hours: 4",
+  },
+];
+
+const initialVersions = [
+  { id: 1, by: "System", at: "2025-11-20 10:12", action: "Generated highlights + suggested outcome (Approve)." },
+  { id: 2, by: "Programme Leader", at: "2025-11-20 10:18", action: "Viewed Similarity evidence (Sunway syllabus page 1)." },
+];
+
+const otherSL = [
+  { name: "Dr. Sarveshshina", role: "Subject Lecturer", avatar: "https://i.pravatar.cc/100?img=48", decision: "Approved" },
+];
+
+/* ------------------ helper logic ------------------ */
 function titleFromKey(key) {
   if (key === "credit") return "Credit Hours";
   if (key === "similarity") return "Similarity";
   return "Grade";
 }
+
 function parseGradeValue(text) {
   const m = String(text).toUpperCase().match(/\b(A\+|A-|A|B\+|B-|B|C\+|C-|C|D\+|D-|D|F)\b/);
   return m ? m[1] : "";
@@ -266,10 +326,12 @@ function parsePercent(text) {
   const m = String(text).match(/(\d+(\.\d+)?)\s*%/);
   return m ? Number(m[1]) : NaN;
 }
+
 function computeOutcomeFromHighlights(highlights) {
   const pickBest = (arr, key) => {
     const items = arr.filter((h) => h.key === key);
     if (items.length === 0) return null;
+    // "best" = max numeric for percent/credit, best grade for grade
     if (key === "similarity") {
       return items
         .slice()
@@ -280,6 +342,7 @@ function computeOutcomeFromHighlights(highlights) {
         .slice()
         .sort((a, b) => (parseNumber(b.value || b.snippet) || 0) - (parseNumber(a.value || a.snippet) || 0))[0];
     }
+    // grade: pick highest in order
     const order = ["F", "D-", "D", "D+", "C-", "C", "C+", "B-", "B", "B+", "A-", "A", "A+"];
     return items
       .slice()
@@ -301,7 +364,16 @@ function computeOutcomeFromHighlights(highlights) {
 }
 
 /* ------------------ add-highlight popover ------------------ */
-function AddHighlightPopover({ open, x, y, selectedText, category, onChangeCategory, onCancel, onConfirm }) {
+function AddHighlightPopover({
+  open,
+  x,
+  y,
+  selectedText,
+  category,
+  onChangeCategory,
+  onCancel,
+  onConfirm,
+}) {
   if (!open) return null;
 
   return (
@@ -351,32 +423,15 @@ function AddHighlightPopover({ open, x, y, selectedText, category, onChangeCateg
 /* ------------------ page ------------------ */
 export default function ApplicationReview() {
   const navigate = useNavigate();
-  const { id } = useParams(); // applications.id (numeric)
-
-  const [loading, setLoading] = useState(true);
-  const [app, setApp] = useState(null);
-  const [docs, setDocs] = useState([]);
-  const [ai, setAi] = useState(null);
+  const { id } = useParams();
 
   const [panel, setPanel] = useState("suggested"); // suggested | info | comment | decision | version
-
-  // docs dropdown uses backend docs
-  const docOptions = useMemo(() => {
-    return (docs || []).map((d) => ({
-      id: String(d.id),
-      name: d.file_name || `Document ${d.id}`,
-      pages: 10, // placeholder until you implement real PDF page count
-      raw: d,
-    }));
-  }, [docs]);
-
-  const [docId, setDocId] = useState("");
+  const [docId, setDocId] = useState(DOCS[0].id);
   const [page, setPage] = useState(1);
   const [goTo, setGoTo] = useState("");
 
-  // highlights (still client-side prototype; later you can persist)
-  const [highlights, setHighlights] = useState([]);
-  const [selectedHighlightId, setSelectedHighlightId] = useState("");
+  const [highlights, setHighlights] = useState(initialHighlights);
+  const [selectedHighlightId, setSelectedHighlightId] = useState("h-sim");
 
   const selectedHighlight = useMemo(
     () => highlights.find((h) => h.id === selectedHighlightId),
@@ -412,108 +467,24 @@ export default function ApplicationReview() {
     category: "similarity",
   });
 
-  // regeneration overlay (now calls backend)
+  // regeneration overlay (async simulation)
   const [isRegenerating, setIsRegenerating] = useState(false);
+  const regenTimerRef = useRef(null);
 
-  // comments
-  const [comments, setComments] = useState([]);
+  // comments for highlights
+  const [comments, setComments] = useState([
+    { id: 1, highlightId: "h-sim", by: "Programme Leader", at: "2025-11-20 10:20", text: "Similarity looks valid. Check if learning outcomes align." },
+  ]);
   const [newComment, setNewComment] = useState("");
 
   // PL decision
   const [myDecision, setMyDecision] = useState("Approved");
 
-  // load app + docs + ai
-  useEffect(() => {
-    const load = async () => {
-      try {
-        setLoading(true);
-
-        const [appRes, docsRes, aiRes] = await Promise.all([
-          api.get(`/applications/${id}`),
-          api.get(`/applications/${id}/documents`),
-          api.get(`/applications/${id}/ai-analysis/latest`).catch(() => ({ data: null })),
-        ]);
-
-        setApp(appRes.data);
-        setDocs(docsRes.data || []);
-        setAi(aiRes.data || null);
-
-        // init dropdown selection
-        const firstDoc = (docsRes.data || [])[0];
-        if (firstDoc) setDocId(String(firstDoc.id));
-
-        // init decision dropdown from existing final_decision if any
-        if (appRes.data?.final_decision) {
-          const fd = String(appRes.data.final_decision).toLowerCase();
-          setMyDecision(fd.includes("reject") ? "Rejected" : "Approved");
-        }
-
-        // init system outcome from ai
-        if (aiRes.data?.decision) {
-          setSystemOutcome(aiRes.data.decision);
-        } else if (appRes.data?.ai_decision) {
-          setSystemOutcome(appRes.data.ai_decision);
-        }
-
-        // build default highlights from AI reasoning if exists
-        const reason = aiRes.data?.reasoning || null;
-        const initH = [];
-        if (reason?.grade?.value) {
-          initH.push({
-            id: `h-grade-${Date.now()}`,
-            key: "grade",
-            label: "Grade",
-            docId: String(firstDoc?.id || ""),
-            page: 1,
-            value: String(reason.grade.value),
-            requirement: REQUIREMENTS.grade,
-            snippet: `Grade: ${reason.grade.value}`,
-          });
-        }
-        if (reason?.similarity?.value != null) {
-          initH.push({
-            id: `h-sim-${Date.now() + 1}`,
-            key: "similarity",
-            label: "Similarity",
-            docId: String(firstDoc?.id || ""),
-            page: 1,
-            value: `${Math.round(Number(reason.similarity.value) * 100)}%`,
-            requirement: REQUIREMENTS.similarity,
-            snippet: `Similarity source: ${reason.similarity.source || "documents"}`,
-          });
-        }
-        if (reason?.credit_hours?.value != null) {
-          initH.push({
-            id: `h-cred-${Date.now() + 2}`,
-            key: "credit",
-            label: "Credit Hours",
-            docId: String(firstDoc?.id || ""),
-            page: 1,
-            value: String(reason.credit_hours.value),
-            requirement: REQUIREMENTS.credit,
-            snippet: `Credit Hours: ${reason.credit_hours.value}`,
-          });
-        }
-
-        setHighlights(initH);
-        setSelectedHighlightId(initH[0]?.id || "");
-        setDirty(false);
-      } catch (e) {
-        console.error(e);
-        alert("Failed to load application review.");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    load();
-  }, [id]);
-
   // computed UI header values
-  const currentDoc = useMemo(() => docOptions.find((d) => d.id === docId) || docOptions[0], [docOptions, docId]);
-  const totalPages = currentDoc?.pages || 10;
+  const currentDoc = DOCS.find((d) => d.id === docId) || DOCS[0];
+  const totalPages = currentDoc.pages;
 
-  // show similarity pill from AI, else from highlights
+  // show similarity pill from the "best" similarity highlight (or fallback)
   const bestSimilarity = useMemo(() => {
     const sims = highlights.filter((h) => h.key === "similarity");
     if (sims.length === 0) return null;
@@ -522,11 +493,7 @@ export default function ApplicationReview() {
       .sort((a, b) => (parsePercent(b.value || b.snippet) || 0) - (parsePercent(a.value || a.snippet) || 0))[0];
   }, [highlights]);
 
-  const similarityScore = useMemo(() => {
-    if (ai?.similarity != null) return `${Math.round(Number(ai.similarity) * 100)}%`;
-    if (app?.ai_score != null) return `${Math.round(Number(app.ai_score) * 100)}%`;
-    return bestSimilarity?.value || "-";
-  }, [ai, app, bestSimilarity]);
+  const similarityScore = bestSimilarity?.value || "81%";
 
   const myHighlightComments = useMemo(
     () => comments.filter((c) => c.highlightId === selectedHighlightId),
@@ -537,6 +504,7 @@ export default function ApplicationReview() {
   useEffect(() => {
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      if (regenTimerRef.current) clearTimeout(regenTimerRef.current);
     };
   }, []);
 
@@ -546,6 +514,7 @@ export default function ApplicationReview() {
     setHighlights(nextHighlights);
     setDirty(true);
 
+    // autosave simulation
     setSaveStatus("Saving…");
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => setSaveStatus("Autosaved"), 600);
@@ -618,31 +587,22 @@ export default function ApplicationReview() {
     setExitPromptOpen(true);
   };
 
-  const startRegeneration = async () => {
+  const startRegeneration = () => {
     setIsRegenerating(true);
-    try {
-      // call backend to run real AI again
-      const r = await api.post(`/applications/${id}/ai-analysis/run`);
-      const analysis = r.data?.analysis || null;
-      setAi(analysis);
-      setSystemOutcome(analysis?.decision || "Reject");
+    if (regenTimerRef.current) clearTimeout(regenTimerRef.current);
+
+    regenTimerRef.current = setTimeout(() => {
+      const newOutcome = computeOutcomeFromHighlights(highlights);
+      setSystemOutcome(newOutcome);
       setUserAcceptedSystem(true);
       setDirty(false);
-
-      // also refresh app snapshot values (optional, but keeps UI consistent)
-      const appRes = await api.get(`/applications/${id}`);
-      setApp(appRes.data);
-
-      setToast("Suggested outcome regenerated (backend AI).");
-    } catch (e) {
-      console.error(e);
-      setToast("Failed to regenerate suggested outcome.");
-    } finally {
       setIsRegenerating(false);
-    }
+      setToast("Suggested outcome regenerated.");
+    }, 1600);
   };
 
   const cancelRegeneration = () => {
+    if (regenTimerRef.current) clearTimeout(regenTimerRef.current);
     setIsRegenerating(false);
     setToast("Regeneration cancelled.");
   };
@@ -673,26 +633,7 @@ export default function ApplicationReview() {
     setToast("Comment added.");
   };
 
-  const submitDecision = async () => {
-    try {
-      // Update final_decision in applications
-      const final_decision = myDecision === "Approved" ? "Approved" : "Rejected";
-
-      await api.patch(`/applications/${id}`, {
-        final_decision,
-        // optionally move registry status later; keep minimal
-      });
-
-      // refresh app
-      const appRes = await api.get(`/applications/${id}`);
-      setApp(appRes.data);
-
-      setToast("Decision submitted.");
-    } catch (e) {
-      console.error(e);
-      setToast("Failed to submit decision.");
-    }
-  };
+  const submitDecision = () => setToast("Decision submitted.");
 
   const goToPage = () => {
     const n = parseInt(goTo, 10);
@@ -702,7 +643,7 @@ export default function ApplicationReview() {
     setGoTo("");
   };
 
-  // Add Highlight
+  // Add Highlight (Option A)
   const onDocMouseUp = (e) => {
     if (!editMode || !addMode) return;
     const sel = window.getSelection();
@@ -728,6 +669,7 @@ export default function ApplicationReview() {
     setAddMode(false);
   };
 
+  // ✅ FIX: Always APPEND highlight; never replace existing highlight for same category
   const confirmAddHighlight = () => {
     const { selectedText, category } = addPopover;
 
@@ -735,18 +677,18 @@ export default function ApplicationReview() {
     if (category === "grade") value = parseGradeValue(selectedText) || "A+";
     if (category === "similarity") {
       const p = parsePercent(selectedText);
-      value = Number.isFinite(p) ? `${p}%` : "80%";
+      value = Number.isFinite(p) ? `${p}%` : "81%";
     }
     if (category === "credit") {
       const n = parseNumber(selectedText);
-      value = Number.isFinite(n) ? String(n) : "3";
+      value = Number.isFinite(n) ? String(n) : "4";
     }
 
     const newH = {
       id: `h-${category}-${Date.now()}`,
       key: category,
       label: titleFromKey(category),
-      docId: docId || (docOptions[0]?.id ?? ""),
+      docId,
       page,
       value: value || "-",
       requirement: REQUIREMENTS[category],
@@ -766,7 +708,7 @@ export default function ApplicationReview() {
     setToast("Add highlight cancelled.");
   };
 
-  // group highlights
+  // group highlights for the viewer (so multiple per category can show)
   const highlightsByKey = useMemo(() => {
     const map = { similarity: [], credit: [], grade: [] };
     for (const h of highlights) {
@@ -774,20 +716,6 @@ export default function ApplicationReview() {
     }
     return map;
   }, [highlights]);
-
-  if (loading) return <div className="mt-10 text-sm">Loading…</div>;
-  if (!app) return <div className="mt-10 text-sm">Application not found.</div>;
-
-  const applicationInfo = {
-    id: app.application_id || app.id,
-    createdAt: app.created_at ? new Date(app.created_at).toLocaleDateString() : (app.date_submitted ? String(app.date_submitted).slice(0, 10) : "-"),
-    studentName: app.student_name,
-    studentId: app.student_id,
-    type: app.type,
-    requestedSubject: app.requested_subject,
-    academicSession: app.academic_session || `${app.intake || ""} | ${app.semester || ""}`,
-    prevModule: app.prev_subject_name || app.qualification || "-",
-  };
 
   return (
     <div className="bg-white">
@@ -817,15 +745,11 @@ export default function ApplicationReview() {
               }}
               className="appearance-none rounded-2xl bg-[#EFEFEF] px-5 py-3 pr-10 text-sm font-semibold text-[#0B0F2A] outline-none min-w-[320px] max-w-[420px]"
             >
-              {docOptions.length === 0 ? (
-                <option value="">No documents</option>
-              ) : (
-                docOptions.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name}
-                  </option>
-                ))
-              )}
+              {DOCS.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name}
+                </option>
+              ))}
             </select>
             <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#0B0F2A]/70">
               <IconChevronDown className="h-5 w-5" />
@@ -853,6 +777,7 @@ export default function ApplicationReview() {
                 </span>
               </button>
 
+              {/* show regenerate ONLY when NOT editing + dirty */}
               {dirty && (
                 <button
                   onClick={startRegeneration}
@@ -886,12 +811,12 @@ export default function ApplicationReview() {
 
       {/* ---------- MAIN LAYOUT ---------- */}
       <div className="mt-10 flex gap-8">
-        {/* LEFT: Viewer (still prototype box) */}
+        {/* LEFT: Viewer */}
         <div className="relative w-[62%] rounded-3xl bg-white shadow-[0_14px_40px_rgba(0,0,0,0.08)]">
           <div ref={viewerRef} className="h-[70vh] overflow-auto rounded-3xl p-6" onMouseUp={onDocMouseUp}>
             <div className="flex items-center gap-3">
               <div className="text-sm font-semibold text-[#0B0F2A]/70">
-                {currentDoc?.name || "Document"} — Page {page}
+                {currentDoc.name} — Page {page}
               </div>
 
               {editMode && (
@@ -950,16 +875,17 @@ export default function ApplicationReview() {
             )}
 
             <div className="mt-4 rounded-2xl border border-black/10 bg-white p-6">
-              <div className="text-center font-bold text-[#0B0F2A]">Document Preview (prototype)</div>
+              <div className="text-center font-bold text-[#0B0F2A]">Online Course Syllabus</div>
               <div className="mt-4 border-t border-black/10" />
 
               <div className="mt-6 space-y-6 text-sm text-[#0B0F2A]/85">
+                {/* Similarity highlights (can be multiple now) */}
                 {highlightsByKey.similarity.map((h) => (
                   <HighlightLine
                     key={h.id}
                     active={selectedHighlightId === h.id}
                     label={h.snippet || "—"}
-                    tooltip="Evidence used for similarity"
+                    tooltip="Similar to Sunway syllabus: topics match (HTML, CSS, JS fundamentals)"
                     editable={editMode}
                     onRemove={() => removeHighlight(h.id)}
                     onClick={() => {
@@ -970,14 +896,17 @@ export default function ApplicationReview() {
                   />
                 ))}
 
-                <div className="h-6" />
+                <div className="h-3" />
+                <div className="font-semibold text-[#0B0F2A]">Instructor Information</div>
+                <div className="text-[#0B0F2A]/70">Email Address: (hidden)</div>
 
+                {/* Credit highlights */}
                 {highlightsByKey.credit.map((h) => (
                   <HighlightLine
                     key={h.id}
                     active={selectedHighlightId === h.id}
                     label={h.snippet || "—"}
-                    tooltip="Evidence used for credit hours"
+                    tooltip="Minimum required: 3 credit hours"
                     editable={editMode}
                     onRemove={() => removeHighlight(h.id)}
                     onClick={() => {
@@ -990,12 +919,13 @@ export default function ApplicationReview() {
 
                 <div className="h-6" />
 
+                {/* Grade highlights */}
                 {highlightsByKey.grade.map((h) => (
                   <HighlightLine
                     key={h.id}
                     active={selectedHighlightId === h.id}
                     label={h.snippet || "—"}
-                    tooltip="Evidence used for grade"
+                    tooltip="Minimum required: ≥ C"
                     editable={editMode}
                     onRemove={() => removeHighlight(h.id)}
                     onClick={() => {
@@ -1007,8 +937,7 @@ export default function ApplicationReview() {
                 ))}
 
                 <div className="mt-10 text-xs text-[#0B0F2A]/45">
-                  (Next step later) Replace this with real PDF rendering + highlight coordinates.
-                  For now, AI data + decisions are real and stored in DB.
+                  (Mock viewer for prototype — later replace with real PDF rendering + coordinates.)
                 </div>
               </div>
             </div>
@@ -1099,14 +1028,14 @@ export default function ApplicationReview() {
 
                   <div className="ml-auto flex items-center gap-2">
                     <button
-                      onClick={() => setConfirm({ open: true, type: "accept" })}
+                      onClick={onAcceptSystem}
                       className={["rounded-full p-2", userAcceptedSystem ? "bg-black/5" : "hover:bg-black/5"].join(" ")}
                       title="Accept suggestion"
                     >
                       <IconTick className="h-5 w-5 text-[#0B0F2A]" />
                     </button>
                     <button
-                      onClick={() => setConfirm({ open: true, type: "reject" })}
+                      onClick={onRejectSystem}
                       className={["rounded-full p-2", !userAcceptedSystem ? "bg-black/5" : "hover:bg-black/5"].join(" ")}
                       title="Reject suggestion"
                     >
@@ -1127,7 +1056,7 @@ export default function ApplicationReview() {
                       active={selectedHighlight?.key === "grade"}
                       title="Grade"
                       leftSub={REQUIREMENTS.grade}
-                      rightValue={ai?.grade_detected || app.grade_detected || highlightsByKey.grade[0]?.value || "-"}
+                      rightValue={highlightsByKey.grade[0]?.value || "-"}
                       onClick={() => {
                         const hid = highlightsByKey.grade[0]?.id;
                         if (hid) jumpToHighlight(hid);
@@ -1138,9 +1067,9 @@ export default function ApplicationReview() {
                       active={selectedHighlight?.key === "similarity"}
                       title="Similarity"
                       leftSub={REQUIREMENTS.similarity}
-                      rightValue={similarityScore}
+                      rightValue={bestSimilarity?.value || "-"}
                       onClick={() => {
-                        const hid = highlightsByKey.similarity[0]?.id;
+                        const hid = bestSimilarity?.id || highlightsByKey.similarity[0]?.id;
                         if (hid) jumpToHighlight(hid);
                       }}
                     />
@@ -1149,7 +1078,7 @@ export default function ApplicationReview() {
                       active={selectedHighlight?.key === "credit"}
                       title="Credit Hours"
                       leftSub={REQUIREMENTS.credit}
-                      rightValue={String(ai?.credit_hours ?? highlightsByKey.credit[0]?.value ?? "-")}
+                      rightValue={highlightsByKey.credit[0]?.value || "-"}
                       onClick={() => {
                         const hid = highlightsByKey.credit[0]?.id;
                         if (hid) jumpToHighlight(hid);
@@ -1166,13 +1095,20 @@ export default function ApplicationReview() {
 
             {panel === "info" && (
               <div className="space-y-4">
-                <InfoRow label="Application ID" value={applicationInfo.id} />
-                <InfoRow label="Created Date" value={applicationInfo.createdAt} />
-                <InfoRow label="Type" value={applicationInfo.type || "-"} />
-                <InfoRow label="Student" value={`${applicationInfo.studentName || "-"} (${applicationInfo.studentId || "-"})`} />
-                <InfoRow label="Requested Subject" value={applicationInfo.requestedSubject || "-"} />
-                <InfoRow label="Academic Session" value={applicationInfo.academicSession || "-"} />
-                <InfoRow label="Previously Taken Module" value={applicationInfo.prevModule || "-"} />
+                <InfoRow label="Application ID" value={id || mockApp.id} />
+
+                {/* ✅ NEW FIELD */}
+                <InfoRow label="Created Date" value={mockApp.createdAt} />
+
+                <InfoRow label="Type" value={mockApp.type} />
+                <InfoRow label="Student" value={`${mockApp.studentName} (${mockApp.studentId})`} />
+                <InfoRow label="Requested Subject" value={mockApp.requestedSubject} />
+                <InfoRow label="Academic Session" value={mockApp.academicSession} />
+                <InfoRow label="Previously Taken Module" value={mockApp.prevModule} />
+
+                <div className="mt-2 rounded-2xl bg-white px-4 py-3 text-xs text-[#0B0F2A]/65">
+                  (Prototype) Later you can fetch this from your application record API.
+                </div>
               </div>
             )}
 
@@ -1249,7 +1185,29 @@ export default function ApplicationReview() {
 
                 <div className="mt-6 rounded-2xl bg-white p-5">
                   <div className="text-sm font-extrabold text-[#0B0F2A]">Other subject lecturers:</div>
-                  <div className="mt-3 text-xs text-[#0B0F2A]/60">(Prototype section — wire to DB later)</div>
+
+                  <div className="mt-4 space-y-4">
+                    {otherSL.map((sl) => (
+                      <div key={sl.name} className="flex items-center gap-3">
+                        <img src={sl.avatar} alt={sl.name} className="h-10 w-10 rounded-full" />
+                        <div className="min-w-0">
+                          <div className="text-sm font-extrabold text-[#0B0F2A]">{sl.name}</div>
+                          <div className="text-xs text-[#0B0F2A]/60">{sl.role}</div>
+                        </div>
+
+                        <span className="ml-auto rounded-2xl bg-[#D9D9D9] px-4 py-2 text-sm font-extrabold text-[#0B0F2A]">
+                          {sl.decision}
+                        </span>
+
+                        <button
+                          onClick={() => setToast(`Opening contact for ${sl.name}… (prototype)`)}
+                          className="rounded-2xl bg-[#FF6B2C] px-4 py-2 text-sm font-extrabold text-black shadow-sm hover:shadow-md"
+                        >
+                          Contact
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             )}
@@ -1257,8 +1215,21 @@ export default function ApplicationReview() {
             {panel === "version" && (
               <div>
                 <div className="text-sm text-[#0B0F2A]/70">Track changes made to highlights / decisions.</div>
-                <div className="mt-5 rounded-2xl bg-white p-4 text-xs text-[#0B0F2A]/65">
-                  (Prototype) Later store version logs into version_history table.
+
+                <div className="mt-5 space-y-3">
+                  {initialVersions.map((v) => (
+                    <div key={v.id} className="rounded-2xl bg-white p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="text-sm font-extrabold text-[#0B0F2A]">{v.by}</div>
+                        <div className="text-xs text-[#0B0F2A]/50">{v.at}</div>
+                      </div>
+                      <div className="mt-2 text-sm text-[#0B0F2A]/80">{v.action}</div>
+                    </div>
+                  ))}
+
+                  <div className="rounded-2xl bg-white p-4 text-xs text-[#0B0F2A]/65">
+                    (Prototype) Later you can log: “added highlight”, “removed highlight”, “changed evidence”, “regenerated outcome”, etc.
+                  </div>
                 </div>
               </div>
             )}
@@ -1275,10 +1246,7 @@ export default function ApplicationReview() {
             : "This will record that you disagree with the system’s suggested outcome."
         }
         onCancel={() => setConfirm({ open: false, type: "" })}
-        onConfirm={() => {
-          onConfirmAction();
-          setConfirm({ open: false, type: "" });
-        }}
+        onConfirm={onConfirmAction}
       />
 
       <ExitEditingModal
@@ -1292,11 +1260,7 @@ export default function ApplicationReview() {
         onRegenerate={() => {
           setExitPromptOpen(false);
           setEditMode(false);
-          // still uses client-side recompute if you want:
-          const newOutcome = computeOutcomeFromHighlights(highlights);
-          setSystemOutcome(newOutcome);
-          setDirty(false);
-          setToast("Suggested outcome regenerated (local).");
+          startRegeneration();
         }}
       />
 
@@ -1354,7 +1318,12 @@ function ReasonCard({ index, title, leftSub, rightValue, active, onClick }) {
 function HighlightLine({ active, label, tooltip, editable, onRemove, onClick }) {
   return (
     <div className="relative">
-      <button type="button" onClick={onClick} className="text-left" title="Click to select this highlight">
+      <button
+        type="button"
+        onClick={onClick}
+        className="text-left"
+        title="Click to select this highlight"
+      >
         <span
           className={[
             "inline-flex items-center rounded-full px-3 py-1",
