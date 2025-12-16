@@ -168,6 +168,7 @@ function ConfirmModal({ open, title, body, onCancel, onConfirm }) {
     </div>
   );
 }
+
 function ExitEditingModal({ open, onContinueEditing, onNotNow, onRegenerate }) {
   if (!open) return null;
   return (
@@ -243,61 +244,190 @@ const REQUIREMENTS = {
   credit: "Minimum: 3 credit hours",
 };
 
-function safeDate(d) {
-  if (!d) return "-";
-  const dt = new Date(d);
-  if (Number.isNaN(dt.getTime())) return "-";
-  return dt.toLocaleDateString();
+function titleFromKey(key) {
+  if (key === "credit") return "Credit Hours";
+  if (key === "similarity") return "Similarity";
+  return "Grade";
 }
-function asPercent01ToText(x) {
-  if (x == null) return "-";
-  const n = Number(x);
-  if (!Number.isFinite(n)) return "-";
-  return `${Math.round(n * 100)}%`;
+function parseGradeValue(text) {
+  const m = String(text).toUpperCase().match(/\b(A\+|A-|A|B\+|B-|B|C\+|C-|C|D\+|D-|D|F)\b/);
+  return m ? m[1] : "";
+}
+function gradeAtLeastC(grade) {
+  const order = ["F", "D-", "D", "D+", "C-", "C", "C+", "B-", "B", "B+", "A-", "A", "A+"];
+  const g = String(grade).toUpperCase();
+  return order.indexOf(g) >= order.indexOf("C");
+}
+function parseNumber(text) {
+  const m = String(text).match(/(\d+(\.\d+)?)/);
+  return m ? Number(m[1]) : NaN;
+}
+function parsePercent(text) {
+  const m = String(text).match(/(\d+(\.\d+)?)\s*%/);
+  return m ? Number(m[1]) : NaN;
+}
+function computeOutcomeFromHighlights(highlights) {
+  const pickBest = (arr, key) => {
+    const items = arr.filter((h) => h.key === key);
+    if (items.length === 0) return null;
+    if (key === "similarity") {
+      return items
+        .slice()
+        .sort((a, b) => (parsePercent(b.value || b.snippet) || 0) - (parsePercent(a.value || a.snippet) || 0))[0];
+    }
+    if (key === "credit") {
+      return items
+        .slice()
+        .sort((a, b) => (parseNumber(b.value || b.snippet) || 0) - (parseNumber(a.value || a.snippet) || 0))[0];
+    }
+    const order = ["F", "D-", "D", "D+", "C-", "C", "C+", "B-", "B", "B+", "A-", "A", "A+"];
+    return items
+      .slice()
+      .sort((a, b) => order.indexOf(parseGradeValue(b.value || b.snippet)) - order.indexOf(parseGradeValue(a.value || a.snippet)))[0];
+  };
+
+  const gradeH = pickBest(highlights, "grade");
+  const simH = pickBest(highlights, "similarity");
+  const credH = pickBest(highlights, "credit");
+
+  if (!gradeH || !simH || !credH) return "Reject";
+
+  const g = parseGradeValue(gradeH.value || gradeH.snippet);
+  const sim = Number.isFinite(parsePercent(simH.value)) ? parsePercent(simH.value) : parsePercent(simH.snippet);
+  const cred = Number.isFinite(parseNumber(credH.value)) ? parseNumber(credH.value) : parseNumber(credH.snippet);
+
+  const ok = gradeAtLeastC(g) && Number.isFinite(sim) && sim >= 80 && Number.isFinite(cred) && cred >= 3;
+  return ok ? "Approve" : "Reject";
 }
 
+/* ------------------ add-highlight popover ------------------ */
+function AddHighlightPopover({ open, x, y, selectedText, category, onChangeCategory, onCancel, onConfirm }) {
+  if (!open) return null;
+
+  return (
+    <div
+      className="fixed z-[75]"
+      style={{ left: Math.min(x, window.innerWidth - 360), top: Math.min(y + 10, window.innerHeight - 260) }}
+    >
+      <div className="w-[340px] rounded-3xl bg-white shadow-2xl border border-black/10 overflow-hidden">
+        <div className="px-5 py-4 border-b border-black/10">
+          <div className="text-sm font-extrabold text-[#0B0F2A]">Add highlight</div>
+          <div className="mt-1 text-xs text-[#0B0F2A]/60">Choose which category this belongs to.</div>
+        </div>
+
+        <div className="p-5 space-y-3">
+          <div className="rounded-2xl bg-[#EFEFEF] p-3 text-xs text-[#0B0F2A]/80">
+            <span className="font-bold text-[#0B0F2A]">Selected:</span>{" "}
+            {selectedText.length > 140 ? selectedText.slice(0, 140) + "…" : selectedText}
+          </div>
+
+          <div>
+            <div className="text-xs font-bold text-[#0B0F2A]/60">Category</div>
+            <select
+              value={category}
+              onChange={(e) => onChangeCategory(e.target.value)}
+              className="mt-2 w-full appearance-none rounded-2xl bg-white border border-black/10 px-4 py-3 text-sm font-extrabold text-[#0B0F2A] outline-none"
+            >
+              <option value="grade">Grade</option>
+              <option value="similarity">Similarity</option>
+              <option value="credit">Credit Hours</option>
+            </select>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-2">
+            <button onClick={onCancel} className="rounded-full bg-[#EFEFEF] px-5 py-3 text-sm font-extrabold text-[#0B0F2A]">
+              Cancel
+            </button>
+            <button onClick={onConfirm} className="rounded-full bg-[#0B0F2A] px-5 py-3 text-sm font-extrabold text-white">
+              Add
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------ page ------------------ */
 export default function ApplicationReview() {
   const navigate = useNavigate();
   const { id } = useParams(); // applications.id (numeric)
 
-  const [panel, setPanel] = useState("suggested"); // suggested | info | comment | decision | version
-
+  const [loading, setLoading] = useState(true);
   const [app, setApp] = useState(null);
   const [docs, setDocs] = useState([]);
   const [ai, setAi] = useState(null);
 
-  const [loading, setLoading] = useState(true);
-  const [toast, setToast] = useState("");
-  const [confirm, setConfirm] = useState({ open: false, type: "" }); // accept | reject
+  const [panel, setPanel] = useState("suggested"); // suggested | info | comment | decision | version
 
-  const [docId, setDocId] = useState(null);
+  // docs dropdown uses backend docs
+  const docOptions = useMemo(() => {
+    return (docs || []).map((d) => ({
+      id: String(d.id),
+      name: d.file_name || `Document ${d.id}`,
+      pages: 10, // placeholder until you implement real PDF page count
+      raw: d,
+    }));
+  }, [docs]);
+
+  const [docId, setDocId] = useState("");
   const [page, setPage] = useState(1);
   const [goTo, setGoTo] = useState("");
+
+  // highlights (still client-side prototype; later you can persist)
+  const [highlights, setHighlights] = useState([]);
+  const [selectedHighlightId, setSelectedHighlightId] = useState("");
+
+  const selectedHighlight = useMemo(
+    () => highlights.find((h) => h.id === selectedHighlightId),
+    [highlights, selectedHighlightId]
+  );
 
   const [systemOutcome, setSystemOutcome] = useState("Approve");
   const [userAcceptedSystem, setUserAcceptedSystem] = useState(true);
 
-  // editing/highlights are still “prototype local” for now (your PDF highlight system is not stored in DB yet)
   const [editMode, setEditMode] = useState(false);
   const [dirty, setDirty] = useState(false);
+
+  const [toast, setToast] = useState("");
+  const [confirm, setConfirm] = useState({ open: false, type: "" }); // accept | reject
+  const [exitPromptOpen, setExitPromptOpen] = useState(false);
+
+  // autosave status
   const [saveStatus, setSaveStatus] = useState("Autosaved");
   const saveTimerRef = useRef(null);
+
+  // undo/redo stacks (highlights only)
   const [past, setPast] = useState([]);
   const [future, setFuture] = useState([]);
 
+  // add-highlight flow
+  const viewerRef = useRef(null);
+  const [addMode, setAddMode] = useState(false);
+  const [addPopover, setAddPopover] = useState({
+    open: false,
+    x: 0,
+    y: 0,
+    selectedText: "",
+    category: "similarity",
+  });
+
+  // regeneration overlay (now calls backend)
   const [isRegenerating, setIsRegenerating] = useState(false);
 
-  // comments (still local prototype; later you can persist in comments table)
+  // comments
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState("");
 
-  // decision
+  // PL decision
   const [myDecision, setMyDecision] = useState("Approved");
 
+  // load app + docs + ai
   useEffect(() => {
     const load = async () => {
       try {
         setLoading(true);
+
         const [appRes, docsRes, aiRes] = await Promise.all([
           api.get(`/applications/${id}`),
           api.get(`/applications/${id}/documents`),
@@ -308,82 +438,213 @@ export default function ApplicationReview() {
         setDocs(docsRes.data || []);
         setAi(aiRes.data || null);
 
-        // default doc selection
+        // init dropdown selection
         const firstDoc = (docsRes.data || [])[0];
-        setDocId(firstDoc ? String(firstDoc.id) : null);
+        if (firstDoc) setDocId(String(firstDoc.id));
 
-        // derive system outcome
-        const decision = (aiRes.data?.decision || appRes.data?.ai_decision || "Approve");
-        setSystemOutcome(decision);
-        setUserAcceptedSystem(true);
-
-        // default PL decision from DB if exists
+        // init decision dropdown from existing final_decision if any
         if (appRes.data?.final_decision) {
-          setMyDecision(String(appRes.data.final_decision).toLowerCase().includes("reject") ? "Rejected" : "Approved");
+          const fd = String(appRes.data.final_decision).toLowerCase();
+          setMyDecision(fd.includes("reject") ? "Rejected" : "Approved");
         }
+
+        // init system outcome from ai
+        if (aiRes.data?.decision) {
+          setSystemOutcome(aiRes.data.decision);
+        } else if (appRes.data?.ai_decision) {
+          setSystemOutcome(appRes.data.ai_decision);
+        }
+
+        // build default highlights from AI reasoning if exists
+        const reason = aiRes.data?.reasoning || null;
+        const initH = [];
+        if (reason?.grade?.value) {
+          initH.push({
+            id: `h-grade-${Date.now()}`,
+            key: "grade",
+            label: "Grade",
+            docId: String(firstDoc?.id || ""),
+            page: 1,
+            value: String(reason.grade.value),
+            requirement: REQUIREMENTS.grade,
+            snippet: `Grade: ${reason.grade.value}`,
+          });
+        }
+        if (reason?.similarity?.value != null) {
+          initH.push({
+            id: `h-sim-${Date.now() + 1}`,
+            key: "similarity",
+            label: "Similarity",
+            docId: String(firstDoc?.id || ""),
+            page: 1,
+            value: `${Math.round(Number(reason.similarity.value) * 100)}%`,
+            requirement: REQUIREMENTS.similarity,
+            snippet: `Similarity source: ${reason.similarity.source || "documents"}`,
+          });
+        }
+        if (reason?.credit_hours?.value != null) {
+          initH.push({
+            id: `h-cred-${Date.now() + 2}`,
+            key: "credit",
+            label: "Credit Hours",
+            docId: String(firstDoc?.id || ""),
+            page: 1,
+            value: String(reason.credit_hours.value),
+            requirement: REQUIREMENTS.credit,
+            snippet: `Credit Hours: ${reason.credit_hours.value}`,
+          });
+        }
+
+        setHighlights(initH);
+        setSelectedHighlightId(initH[0]?.id || "");
+        setDirty(false);
       } catch (e) {
         console.error(e);
-        alert("Failed to load application review data.");
+        alert("Failed to load application review.");
       } finally {
         setLoading(false);
       }
     };
 
     load();
+  }, [id]);
+
+  // computed UI header values
+  const currentDoc = useMemo(() => docOptions.find((d) => d.id === docId) || docOptions[0], [docOptions, docId]);
+  const totalPages = currentDoc?.pages || 10;
+
+  // show similarity pill from AI, else from highlights
+  const bestSimilarity = useMemo(() => {
+    const sims = highlights.filter((h) => h.key === "similarity");
+    if (sims.length === 0) return null;
+    return sims
+      .slice()
+      .sort((a, b) => (parsePercent(b.value || b.snippet) || 0) - (parsePercent(a.value || a.snippet) || 0))[0];
+  }, [highlights]);
+
+  const similarityScore = useMemo(() => {
+    if (ai?.similarity != null) return `${Math.round(Number(ai.similarity) * 100)}%`;
+    if (app?.ai_score != null) return `${Math.round(Number(app.ai_score) * 100)}%`;
+    return bestSimilarity?.value || "-";
+  }, [ai, app, bestSimilarity]);
+
+  const myHighlightComments = useMemo(
+    () => comments.filter((c) => c.highlightId === selectedHighlightId),
+    [comments, selectedHighlightId]
+  );
+
+  // cleanup timers
+  useEffect(() => {
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
-  }, [id]);
+  }, []);
 
-  const selectedDoc = useMemo(() => docs.find((d) => String(d.id) === String(docId)) || null, [docs, docId]);
+  const pushHistoryAndApply = (nextHighlights) => {
+    setPast((p) => [...p, highlights]);
+    setFuture([]);
+    setHighlights(nextHighlights);
+    setDirty(true);
 
-  const totalPages = 7; // still prototype (real PDF paging comes later)
+    setSaveStatus("Saving…");
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => setSaveStatus("Autosaved"), 600);
+  };
 
-  const similarityScore = useMemo(() => {
-    // prefer ai.similarity (0..1), else app.ai_score
-    const s = ai?.similarity ?? app?.ai_score;
-    return asPercent01ToText(s);
-  }, [ai, app]);
+  const undo = () => {
+    if (past.length === 0) return;
+    const prev = past[past.length - 1];
+    setPast((p) => p.slice(0, -1));
+    setFuture((f) => [highlights, ...f]);
+    setHighlights(prev);
+    setDirty(true);
 
-  const infoVM = useMemo(() => {
-    if (!app) return null;
-    return {
-      applicationId: app.application_id || app.id,
-      createdDate: safeDate(app.created_at || app.date_submitted),
-      type: app.type || "-",
-      student: `${app.student_name || "-"} (${app.student_id || "-"})`,
-      requestedSubject: app.requested_subject || "-",
-      academicSession: app.academic_session || `${app.intake || "-"} | ${app.semester || "-"}`,
-      prevModule: app.prev_subject_name || app.qualification || "-",
-    };
-  }, [app]);
+    setSaveStatus("Saving…");
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => setSaveStatus("Autosaved"), 600);
+  };
 
-  const reasoningVM = useMemo(() => {
-    // Prefer ai_analysis values, fallback to applications columns
-    const grade = ai?.grade_detected ?? app?.grade_detected ?? "-";
-    const mark = app?.mark_detected ?? "-";
-    const credit = ai?.credit_hours ?? "-";
-    const sim = asPercent01ToText(ai?.similarity ?? app?.ai_score);
+  const redo = () => {
+    if (future.length === 0) return;
+    const next = future[0];
+    setFuture((f) => f.slice(1));
+    setPast((p) => [...p, highlights]);
+    setHighlights(next);
+    setDirty(true);
 
-    return {
-      grade,
-      mark,
-      credit,
-      similarity: sim,
-      raw: ai?.reasoning || null,
-    };
-  }, [ai, app]);
+    setSaveStatus("Saving…");
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => setSaveStatus("Autosaved"), 600);
+  };
+
+  const jumpToHighlight = (hid) => {
+    const h = highlights.find((x) => x.id === hid);
+    if (!h) return;
+    setSelectedHighlightId(hid);
+    setDocId(h.docId);
+    setPage(h.page);
+    setPanel("suggested");
+  };
+
+  const removeHighlight = (hid) => {
+    const next = highlights.filter((h) => h.id !== hid);
+    pushHistoryAndApply(next);
+
+    if (selectedHighlightId === hid) {
+      const fallback = next[0]?.id || "";
+      setSelectedHighlightId(fallback);
+    }
+    setToast("Highlight removed.");
+  };
 
   const beginEditMode = () => {
     setEditMode(true);
     setSaveStatus("Autosaved");
     setPast([]);
     setFuture([]);
+    setAddMode(false);
+    setAddPopover((p) => ({ ...p, open: false }));
   };
-  const exitEditMode = () => {
-    setEditMode(false);
-    setDirty(false);
-    setToast("Exited editing mode.");
+
+  const requestExitEditMode = () => {
+    setAddMode(false);
+    setAddPopover((p) => ({ ...p, open: false }));
+
+    if (!dirty) {
+      setEditMode(false);
+      setToast("Exited editing mode.");
+      return;
+    }
+    setExitPromptOpen(true);
+  };
+
+  const startRegeneration = async () => {
+    setIsRegenerating(true);
+    try {
+      // call backend to run real AI again
+      const r = await api.post(`/applications/${id}/ai-analysis/run`);
+      const analysis = r.data?.analysis || null;
+      setAi(analysis);
+      setSystemOutcome(analysis?.decision || "Reject");
+      setUserAcceptedSystem(true);
+      setDirty(false);
+
+      // also refresh app snapshot values (optional, but keeps UI consistent)
+      const appRes = await api.get(`/applications/${id}`);
+      setApp(appRes.data);
+
+      setToast("Suggested outcome regenerated (backend AI).");
+    } catch (e) {
+      console.error(e);
+      setToast("Failed to regenerate suggested outcome.");
+    } finally {
+      setIsRegenerating(false);
+    }
+  };
+
+  const cancelRegeneration = () => {
+    setIsRegenerating(false);
+    setToast("Regeneration cancelled.");
   };
 
   const onAcceptSystem = () => setConfirm({ open: true, type: "accept" });
@@ -401,67 +662,36 @@ export default function ApplicationReview() {
     setConfirm({ open: false, type: "" });
   };
 
+  const addComment = () => {
+    const text = newComment.trim();
+    if (!text || !selectedHighlightId) return;
+    setComments((prev) => [
+      ...prev,
+      { id: Date.now(), highlightId: selectedHighlightId, by: "Programme Leader", at: "Just now", text },
+    ]);
+    setNewComment("");
+    setToast("Comment added.");
+  };
+
   const submitDecision = async () => {
     try {
+      // Update final_decision in applications
       const final_decision = myDecision === "Approved" ? "Approved" : "Rejected";
 
       await api.patch(`/applications/${id}`, {
         final_decision,
-        // optional status update example:
-        // pl_status: "Approved",
+        // optionally move registry status later; keep minimal
       });
+
+      // refresh app
+      const appRes = await api.get(`/applications/${id}`);
+      setApp(appRes.data);
 
       setToast("Decision submitted.");
     } catch (e) {
       console.error(e);
-      alert("Failed to submit decision.");
+      setToast("Failed to submit decision.");
     }
-  };
-
-  const startRegeneration = async () => {
-    try {
-      setIsRegenerating(true);
-      // triggers backend AI generation + updates DB
-      await api.post(`/applications/${id}/ai-analysis/run`);
-
-      // reload latest AI + application (so UI stays consistent)
-      const [appRes, aiRes] = await Promise.all([
-        api.get(`/applications/${id}`),
-        api.get(`/applications/${id}/ai-analysis/latest`).catch(() => ({ data: null })),
-      ]);
-
-      setApp(appRes.data);
-      setAi(aiRes.data || null);
-
-      const decision = (aiRes.data?.decision || appRes.data?.ai_decision || "Approve");
-      setSystemOutcome(decision);
-      setUserAcceptedSystem(true);
-
-      setDirty(false);
-      setToast("Suggested outcome regenerated.");
-    } catch (e) {
-      console.error(e);
-      alert("Failed to regenerate suggested outcome.");
-    } finally {
-      setIsRegenerating(false);
-    }
-  };
-
-  const cancelRegeneration = () => {
-    // Frontend cancel only (backend call already done or not started)
-    setIsRegenerating(false);
-    setToast("Regeneration cancelled.");
-  };
-
-  const addComment = () => {
-    const text = newComment.trim();
-    if (!text) return;
-    setComments((prev) => [
-      ...prev,
-      { id: Date.now(), by: "Programme Leader", at: "Just now", text },
-    ]);
-    setNewComment("");
-    setToast("Comment added.");
   };
 
   const goToPage = () => {
@@ -472,8 +702,92 @@ export default function ApplicationReview() {
     setGoTo("");
   };
 
+  // Add Highlight
+  const onDocMouseUp = (e) => {
+    if (!editMode || !addMode) return;
+    const sel = window.getSelection();
+    if (!sel) return;
+    const text = sel.toString().trim();
+    if (!text) return;
+
+    const viewer = viewerRef.current;
+    if (!viewer) return;
+    const anchorNode = sel.anchorNode;
+    if (!anchorNode) return;
+    const anchorEl = anchorNode.nodeType === 1 ? anchorNode : anchorNode.parentElement;
+    if (!anchorEl || !viewer.contains(anchorEl)) return;
+
+    setAddPopover({
+      open: true,
+      x: e.clientX,
+      y: e.clientY,
+      selectedText: text,
+      category: "similarity",
+    });
+
+    setAddMode(false);
+  };
+
+  const confirmAddHighlight = () => {
+    const { selectedText, category } = addPopover;
+
+    let value = "";
+    if (category === "grade") value = parseGradeValue(selectedText) || "A+";
+    if (category === "similarity") {
+      const p = parsePercent(selectedText);
+      value = Number.isFinite(p) ? `${p}%` : "80%";
+    }
+    if (category === "credit") {
+      const n = parseNumber(selectedText);
+      value = Number.isFinite(n) ? String(n) : "3";
+    }
+
+    const newH = {
+      id: `h-${category}-${Date.now()}`,
+      key: category,
+      label: titleFromKey(category),
+      docId: docId || (docOptions[0]?.id ?? ""),
+      page,
+      value: value || "-",
+      requirement: REQUIREMENTS[category],
+      snippet: selectedText,
+    };
+
+    const next = [...highlights, newH];
+    pushHistoryAndApply(next);
+    setSelectedHighlightId(newH.id);
+
+    setAddPopover((p) => ({ ...p, open: false, selectedText: "" }));
+    setToast("Highlight added.");
+  };
+
+  const cancelAddHighlight = () => {
+    setAddPopover((p) => ({ ...p, open: false, selectedText: "" }));
+    setToast("Add highlight cancelled.");
+  };
+
+  // group highlights
+  const highlightsByKey = useMemo(() => {
+    const map = { similarity: [], credit: [], grade: [] };
+    for (const h of highlights) {
+      if (map[h.key]) map[h.key].push(h);
+    }
+    return map;
+  }, [highlights]);
+
   if (loading) return <div className="mt-10 text-sm">Loading…</div>;
   if (!app) return <div className="mt-10 text-sm">Application not found.</div>;
+
+  const applicationInfo = {
+    id: app.application_id || app.id,
+    createdAt: app.created_at ? new Date(app.created_at).toLocaleDateString() : (app.date_submitted ? String(app.date_submitted).slice(0, 10) : "-"),
+    studentName: app.student_name,
+    studentId: app.student_id,
+    type: app.type,
+    requestedSubject: app.requested_subject,
+    academicSession: app.academic_session || `${app.intake || ""} | ${app.semester || ""}`,
+    prevModule: app.prev_subject_name || app.qualification || "-",
+  };
 
   return (
     <div className="bg-white">
@@ -496,19 +810,19 @@ export default function ApplicationReview() {
 
           <div className="relative">
             <select
-              value={docId || ""}
+              value={docId}
               onChange={(e) => {
                 setDocId(e.target.value);
                 setPage(1);
               }}
               className="appearance-none rounded-2xl bg-[#EFEFEF] px-5 py-3 pr-10 text-sm font-semibold text-[#0B0F2A] outline-none min-w-[320px] max-w-[420px]"
             >
-              {docs.length === 0 ? (
+              {docOptions.length === 0 ? (
                 <option value="">No documents</option>
               ) : (
-                docs.map((d) => (
-                  <option key={d.id} value={String(d.id)}>
-                    {d.file_name}
+                docOptions.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
                   </option>
                 ))
               )}
@@ -547,16 +861,6 @@ export default function ApplicationReview() {
                   Regenerate suggested outcome
                 </button>
               )}
-
-              {/* always allow regenerate (manual) */}
-              {!dirty && (
-                <button
-                  onClick={startRegeneration}
-                  className="rounded-2xl bg-[#FF6B2C] px-4 py-3 text-sm font-extrabold text-black shadow-sm hover:shadow-md"
-                >
-                  Generate / Refresh AI
-                </button>
-              )}
             </>
           ) : (
             <>
@@ -570,7 +874,7 @@ export default function ApplicationReview() {
               <div className="hidden md:block text-xs font-bold text-[#0B0F2A]/60">{saveStatus}</div>
 
               <button
-                onClick={exitEditMode}
+                onClick={requestExitEditMode}
                 className="rounded-2xl bg-[#EFEFEF] px-4 py-3 text-sm font-extrabold text-[#0B0F2A]"
               >
                 Exit
@@ -582,41 +886,131 @@ export default function ApplicationReview() {
 
       {/* ---------- MAIN LAYOUT ---------- */}
       <div className="mt-10 flex gap-8">
-        {/* LEFT: Viewer (prototype) */}
+        {/* LEFT: Viewer (still prototype box) */}
         <div className="relative w-[62%] rounded-3xl bg-white shadow-[0_14px_40px_rgba(0,0,0,0.08)]">
-          <div className="h-[70vh] overflow-auto rounded-3xl p-6">
+          <div ref={viewerRef} className="h-[70vh] overflow-auto rounded-3xl p-6" onMouseUp={onDocMouseUp}>
             <div className="flex items-center gap-3">
               <div className="text-sm font-semibold text-[#0B0F2A]/70">
-                {selectedDoc ? `${selectedDoc.file_name} — Page ${page}` : "No document selected"}
+                {currentDoc?.name || "Document"} — Page {page}
               </div>
 
-              {selectedDoc && (
-                <button
-                  onClick={() => window.open(`http://localhost:5000/api/applications/documents/${selectedDoc.id}/view`, "_blank")}
-                  className="ml-auto rounded-2xl bg-[#EFEFEF] px-4 py-2 text-sm font-extrabold text-[#0B0F2A] hover:bg-black/5"
-                >
-                  Open PDF
-                </button>
+              {editMode && (
+                <div className="ml-auto flex items-center gap-2">
+                  <button
+                    onClick={() => setAddMode(true)}
+                    className={[
+                      "rounded-2xl px-3 py-2 text-xs font-extrabold border",
+                      addMode
+                        ? "bg-[#0B0F2A] text-white border-[#0B0F2A]"
+                        : "bg-white text-[#0B0F2A] border-black/10 hover:bg-black/[0.03]",
+                    ].join(" ")}
+                    title="Add a missing highlight"
+                  >
+                    <span className="inline-flex items-center gap-2">
+                      <IconPlus className="h-4 w-4" />
+                      Add highlight
+                    </span>
+                  </button>
+
+                  <button
+                    onClick={undo}
+                    disabled={past.length === 0}
+                    className={[
+                      "rounded-2xl p-2 border",
+                      past.length === 0
+                        ? "bg-[#EFEFEF] text-[#0B0F2A]/35 border-black/5"
+                        : "bg-white text-[#0B0F2A] border-black/10 hover:bg-black/[0.03]",
+                    ].join(" ")}
+                    title="Undo"
+                  >
+                    <IconUndo className="h-5 w-5" />
+                  </button>
+
+                  <button
+                    onClick={redo}
+                    disabled={future.length === 0}
+                    className={[
+                      "rounded-2xl p-2 border",
+                      future.length === 0
+                        ? "bg-[#EFEFEF] text-[#0B0F2A]/35 border-black/5"
+                        : "bg-white text-[#0B0F2A] border-black/10 hover:bg-black/[0.03]",
+                    ].join(" ")}
+                    title="Redo"
+                  >
+                    <IconRedo className="h-5 w-5" />
+                  </button>
+                </div>
               )}
             </div>
 
+            {editMode && addMode && (
+              <div className="mt-3 rounded-2xl bg-[#FFF6B8]/60 border border-black/10 px-4 py-3 text-xs text-[#0B0F2A]/70">
+                Select text in the document, then choose a category to add it as a highlight.
+              </div>
+            )}
+
             <div className="mt-4 rounded-2xl border border-black/10 bg-white p-6">
-              <div className="text-center font-bold text-[#0B0F2A]">PDF Viewer Placeholder</div>
+              <div className="text-center font-bold text-[#0B0F2A]">Document Preview (prototype)</div>
               <div className="mt-4 border-t border-black/10" />
-              <div className="mt-6 text-sm text-[#0B0F2A]/75">
-                You already have working <b>View</b> endpoints.  
-                Next step (later) is embedding a real PDF viewer (pdf.js/react-pdf) + highlight coords storage.
-              </div>
 
-              <div className="mt-6 rounded-2xl bg-[#FFF6B8]/60 border border-black/10 px-4 py-3 text-xs text-[#0B0F2A]/70">
-                Current AI values (from DB): Grade <b>{reasoningVM.grade}</b>, Similarity <b>{reasoningVM.similarity}</b>, Credit Hours <b>{String(reasoningVM.credit)}</b>.
-              </div>
+              <div className="mt-6 space-y-6 text-sm text-[#0B0F2A]/85">
+                {highlightsByKey.similarity.map((h) => (
+                  <HighlightLine
+                    key={h.id}
+                    active={selectedHighlightId === h.id}
+                    label={h.snippet || "—"}
+                    tooltip="Evidence used for similarity"
+                    editable={editMode}
+                    onRemove={() => removeHighlight(h.id)}
+                    onClick={() => {
+                      setSelectedHighlightId(h.id);
+                      setDocId(h.docId);
+                      setPage(h.page);
+                    }}
+                  />
+                ))}
 
-              {reasoningVM.raw && (
-                <pre className="mt-6 text-xs bg-[#EFEFEF] rounded-2xl p-4 overflow-auto">
-                  {JSON.stringify(reasoningVM.raw, null, 2)}
-                </pre>
-              )}
+                <div className="h-6" />
+
+                {highlightsByKey.credit.map((h) => (
+                  <HighlightLine
+                    key={h.id}
+                    active={selectedHighlightId === h.id}
+                    label={h.snippet || "—"}
+                    tooltip="Evidence used for credit hours"
+                    editable={editMode}
+                    onRemove={() => removeHighlight(h.id)}
+                    onClick={() => {
+                      setSelectedHighlightId(h.id);
+                      setDocId(h.docId);
+                      setPage(h.page);
+                    }}
+                  />
+                ))}
+
+                <div className="h-6" />
+
+                {highlightsByKey.grade.map((h) => (
+                  <HighlightLine
+                    key={h.id}
+                    active={selectedHighlightId === h.id}
+                    label={h.snippet || "—"}
+                    tooltip="Evidence used for grade"
+                    editable={editMode}
+                    onRemove={() => removeHighlight(h.id)}
+                    onClick={() => {
+                      setSelectedHighlightId(h.id);
+                      setDocId(h.docId);
+                      setPage(h.page);
+                    }}
+                  />
+                ))}
+
+                <div className="mt-10 text-xs text-[#0B0F2A]/45">
+                  (Next step later) Replace this with real PDF rendering + highlight coordinates.
+                  For now, AI data + decisions are real and stored in DB.
+                </div>
+              </div>
             </div>
           </div>
 
@@ -705,14 +1099,14 @@ export default function ApplicationReview() {
 
                   <div className="ml-auto flex items-center gap-2">
                     <button
-                      onClick={onAcceptSystem}
+                      onClick={() => setConfirm({ open: true, type: "accept" })}
                       className={["rounded-full p-2", userAcceptedSystem ? "bg-black/5" : "hover:bg-black/5"].join(" ")}
                       title="Accept suggestion"
                     >
                       <IconTick className="h-5 w-5 text-[#0B0F2A]" />
                     </button>
                     <button
-                      onClick={onRejectSystem}
+                      onClick={() => setConfirm({ open: true, type: "reject" })}
                       className={["rounded-full p-2", !userAcceptedSystem ? "bg-black/5" : "hover:bg-black/5"].join(" ")}
                       title="Reject suggestion"
                     >
@@ -724,48 +1118,79 @@ export default function ApplicationReview() {
                 <div className="mt-6">
                   <div className="text-sm font-extrabold text-[#0B0F2A]">Reasonings</div>
                   <div className="mt-1 text-xs text-[#0B0F2A]/60">
-                    Values below are loaded from DB (ai_analysis + applications).
+                    Values below are extracted by the system. Click an item to jump to the detected evidence.
                   </div>
 
                   <div className="mt-5 space-y-3">
-                    <ReasonCard index={1} title="Grade" leftSub={REQUIREMENTS.grade} rightValue={reasoningVM.grade} />
-                    <ReasonCard index={2} title="Similarity" leftSub={REQUIREMENTS.similarity} rightValue={reasoningVM.similarity} />
-                    <ReasonCard index={3} title="Credit Hours" leftSub={REQUIREMENTS.credit} rightValue={String(reasoningVM.credit)} />
+                    <ReasonCard
+                      index={1}
+                      active={selectedHighlight?.key === "grade"}
+                      title="Grade"
+                      leftSub={REQUIREMENTS.grade}
+                      rightValue={ai?.grade_detected || app.grade_detected || highlightsByKey.grade[0]?.value || "-"}
+                      onClick={() => {
+                        const hid = highlightsByKey.grade[0]?.id;
+                        if (hid) jumpToHighlight(hid);
+                      }}
+                    />
+                    <ReasonCard
+                      index={2}
+                      active={selectedHighlight?.key === "similarity"}
+                      title="Similarity"
+                      leftSub={REQUIREMENTS.similarity}
+                      rightValue={similarityScore}
+                      onClick={() => {
+                        const hid = highlightsByKey.similarity[0]?.id;
+                        if (hid) jumpToHighlight(hid);
+                      }}
+                    />
+                    <ReasonCard
+                      index={3}
+                      active={selectedHighlight?.key === "credit"}
+                      title="Credit Hours"
+                      leftSub={REQUIREMENTS.credit}
+                      rightValue={String(ai?.credit_hours ?? highlightsByKey.credit[0]?.value ?? "-")}
+                      onClick={() => {
+                        const hid = highlightsByKey.credit[0]?.id;
+                        if (hid) jumpToHighlight(hid);
+                      }}
+                    />
                   </div>
                 </div>
 
                 <div className="mt-6 rounded-2xl bg-white px-4 py-3 text-xs text-[#0B0F2A]/65">
-                  Tip: Click <span className="font-bold">Generate / Refresh AI</span> if documents changed.
+                  Tip: Use <span className="font-bold">Edit Highlights</span> to remove incorrect evidence or add missing evidence.
                 </div>
               </div>
             )}
 
-            {panel === "info" && infoVM && (
+            {panel === "info" && (
               <div className="space-y-4">
-                <InfoRow label="Application ID" value={infoVM.applicationId} />
-                <InfoRow label="Created Date" value={infoVM.createdDate} />
-                <InfoRow label="Type" value={infoVM.type} />
-                <InfoRow label="Student" value={infoVM.student} />
-                <InfoRow label="Requested Subject" value={infoVM.requestedSubject} />
-                <InfoRow label="Academic Session" value={infoVM.academicSession} />
-                <InfoRow label="Previously Taken Module" value={infoVM.prevModule} />
+                <InfoRow label="Application ID" value={applicationInfo.id} />
+                <InfoRow label="Created Date" value={applicationInfo.createdAt} />
+                <InfoRow label="Type" value={applicationInfo.type || "-"} />
+                <InfoRow label="Student" value={`${applicationInfo.studentName || "-"} (${applicationInfo.studentId || "-"})`} />
+                <InfoRow label="Requested Subject" value={applicationInfo.requestedSubject || "-"} />
+                <InfoRow label="Academic Session" value={applicationInfo.academicSession || "-"} />
+                <InfoRow label="Previously Taken Module" value={applicationInfo.prevModule || "-"} />
               </div>
             )}
 
             {panel === "comment" && (
               <div>
                 <div className="rounded-2xl bg-white p-4">
-                  <div className="text-xs font-bold text-[#0B0F2A]/70">Comments</div>
+                  <div className="text-xs font-bold text-[#0B0F2A]/70">Selected evidence</div>
+                  <div className="mt-1 font-extrabold text-[#0B0F2A]">{selectedHighlight?.label || "—"}</div>
                   <div className="mt-2 text-xs text-[#0B0F2A]/60">
-                    (Prototype) Later you can store this using your <b>comments</b> table.
+                    {selectedHighlight?.snippet || "Select a reasoning to comment on it."}
                   </div>
                 </div>
 
                 <div className="mt-5 space-y-3">
-                  {comments.length === 0 ? (
+                  {myHighlightComments.length === 0 ? (
                     <div className="text-sm text-[#0B0F2A]/60">No comments yet.</div>
                   ) : (
-                    comments.map((c) => (
+                    myHighlightComments.map((c) => (
                       <div key={c.id} className="rounded-2xl bg-white p-4">
                         <div className="flex items-center justify-between">
                           <div className="text-sm font-extrabold text-[#0B0F2A]">{c.by}</div>
@@ -781,7 +1206,7 @@ export default function ApplicationReview() {
                   <textarea
                     value={newComment}
                     onChange={(e) => setNewComment(e.target.value)}
-                    placeholder="Add a comment…"
+                    placeholder="Add a comment for this evidence…"
                     className="h-24 w-full resize-none rounded-2xl border border-black/10 p-3 text-sm outline-none"
                   />
                   <div className="mt-3 flex justify-end">
@@ -819,16 +1244,22 @@ export default function ApplicationReview() {
                   </div>
 
                   <div className="mt-3 text-xs text-[#0B0F2A]/60">Remark:</div>
-                  <div className="mt-2 text-xs text-[#0B0F2A]/60">
-                    (Hook this to applications.remarks later if you want it editable here.)
-                  </div>
+                  <div className="mt-2 h-12 rounded-2xl bg-[#EFEFEF]" />
+                </div>
+
+                <div className="mt-6 rounded-2xl bg-white p-5">
+                  <div className="text-sm font-extrabold text-[#0B0F2A]">Other subject lecturers:</div>
+                  <div className="mt-3 text-xs text-[#0B0F2A]/60">(Prototype section — wire to DB later)</div>
                 </div>
               </div>
             )}
 
             {panel === "version" && (
-              <div className="rounded-2xl bg-white p-4 text-sm text-[#0B0F2A]/70">
-                (Prototype) Later you can log events into <b>version_history</b>.
+              <div>
+                <div className="text-sm text-[#0B0F2A]/70">Track changes made to highlights / decisions.</div>
+                <div className="mt-5 rounded-2xl bg-white p-4 text-xs text-[#0B0F2A]/65">
+                  (Prototype) Later store version logs into version_history table.
+                </div>
               </div>
             )}
           </div>
@@ -844,7 +1275,40 @@ export default function ApplicationReview() {
             : "This will record that you disagree with the system’s suggested outcome."
         }
         onCancel={() => setConfirm({ open: false, type: "" })}
-        onConfirm={onConfirmAction}
+        onConfirm={() => {
+          onConfirmAction();
+          setConfirm({ open: false, type: "" });
+        }}
+      />
+
+      <ExitEditingModal
+        open={exitPromptOpen}
+        onContinueEditing={() => setExitPromptOpen(false)}
+        onNotNow={() => {
+          setExitPromptOpen(false);
+          setEditMode(false);
+          setToast("Exited editing mode. You can regenerate later.");
+        }}
+        onRegenerate={() => {
+          setExitPromptOpen(false);
+          setEditMode(false);
+          // still uses client-side recompute if you want:
+          const newOutcome = computeOutcomeFromHighlights(highlights);
+          setSystemOutcome(newOutcome);
+          setDirty(false);
+          setToast("Suggested outcome regenerated (local).");
+        }}
+      />
+
+      <AddHighlightPopover
+        open={addPopover.open}
+        x={addPopover.x}
+        y={addPopover.y}
+        selectedText={addPopover.selectedText}
+        category={addPopover.category}
+        onChangeCategory={(c) => setAddPopover((p) => ({ ...p, category: c }))}
+        onCancel={cancelAddHighlight}
+        onConfirm={confirmAddHighlight}
       />
 
       <Toast message={toast} onClose={() => setToast("")} />
@@ -862,9 +1326,15 @@ function InfoRow({ label, value }) {
   );
 }
 
-function ReasonCard({ index, title, leftSub, rightValue }) {
+function ReasonCard({ index, title, leftSub, rightValue, active, onClick }) {
   return (
-    <div className="w-full rounded-2xl border border-black/10 p-4 text-left bg-white">
+    <button
+      onClick={onClick}
+      className={[
+        "w-full rounded-2xl border border-black/10 p-4 text-left transition",
+        active ? "bg-[#F6F2A9]" : "bg-white hover:bg-black/[0.03]",
+      ].join(" ")}
+    >
       <div className="flex items-center gap-3">
         <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#FF6B2C] text-sm font-extrabold text-black">
           {index}
@@ -877,6 +1347,45 @@ function ReasonCard({ index, title, leftSub, rightValue }) {
 
         <div className="text-sm font-extrabold text-[#0B0F2A]">{rightValue}</div>
       </div>
+    </button>
+  );
+}
+
+function HighlightLine({ active, label, tooltip, editable, onRemove, onClick }) {
+  return (
+    <div className="relative">
+      <button type="button" onClick={onClick} className="text-left" title="Click to select this highlight">
+        <span
+          className={[
+            "inline-flex items-center rounded-full px-3 py-1",
+            active ? "bg-[#F6F2A9] text-[#0B0F2A]" : "bg-[#FFF6B8]/60 text-[#0B0F2A]",
+          ].join(" ")}
+        >
+          <span className="font-semibold">{label}</span>
+
+          <span className="group relative ml-2 inline-flex items-center">
+            <span className="text-[#0B0F2A]/40">ⓘ</span>
+            <span className="pointer-events-none absolute left-full top-1/2 ml-3 hidden -translate-y-1/2 rounded-2xl bg-[#0B0F2A] px-4 py-3 text-xs text-white shadow-lg group-hover:block w-[260px]">
+              {tooltip}
+            </span>
+          </span>
+
+          {editable && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onRemove?.();
+              }}
+              className="ml-3 inline-flex items-center gap-2 rounded-full bg-white/70 px-2.5 py-1 text-[11px] font-extrabold hover:bg-white"
+              title="Remove highlight"
+            >
+              <IconTrash className="h-4 w-4" />
+              Remove
+            </button>
+          )}
+        </span>
+      </button>
     </div>
   );
 }

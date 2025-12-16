@@ -3,6 +3,8 @@ import pool from "../config/db.js";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
+import { runAiAnalysis } from "../services/aiService.js";
+
 
 const router = express.Router();
 
@@ -19,6 +21,61 @@ const storage = multer.diskStorage({
     cb(null, `${ts}_${safe}`);
   },
 });
+
+async function runAndPersistAi(appId) {
+  // fetch application
+  const appR = await pool.query(`SELECT * FROM applications WHERE id = $1`, [appId]);
+  if (appR.rows.length === 0) throw new Error("Application not found");
+  const application = appR.rows[0];
+
+  // fetch documents
+  const docsR = await pool.query(
+    `SELECT id, file_name, file_type, file_path, uploaded_at
+     FROM documents
+     WHERE application_id = $1
+     ORDER BY uploaded_at DESC, id DESC`,
+    [appId]
+  );
+  const documents = docsR.rows;
+
+  // run AI
+  const ai = await runAiAnalysis(application, documents);
+
+  // insert into ai_analysis
+  const insertR = await pool.query(
+    `INSERT INTO ai_analysis (application_id, similarity, grade_detected, credit_hours, decision, reasoning)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING *`,
+    [
+      appId,
+      ai.similarity,
+      ai.gradeDetected,
+      ai.creditHours,
+      ai.decision,
+      ai.reasoning,
+    ]
+  );
+
+  // update applications snapshot fields (so ApplicationDetails can show quickly)
+  await pool.query(
+    `UPDATE applications
+     SET ai_score = $1,
+         ai_decision = $2,
+         mark_detected = $3,
+         grade_detected = $4
+     WHERE id = $5`,
+    [
+      ai.similarity,
+      ai.decision,
+      ai.markDetected ? String(ai.markDetected) : null,
+      ai.gradeDetected,
+      appId,
+    ]
+  );
+
+  return insertR.rows[0];
+}
+
 
 const upload = multer({
   storage,
@@ -312,13 +369,16 @@ router.post("/:id/ai-analysis/run", async (req, res) => {
     const appId = Number(req.params.id);
     if (!Number.isFinite(appId)) return res.status(400).json({ error: "Invalid application id" });
 
-    const aiRow = await runAiForApplication(appId);
-    res.json({ message: "AI analysis generated", ai: aiRow });
+    const row = await runAndPersistAi(appId);
+    res.json({ message: "AI analysis generated", analysis: row });
   } catch (err) {
     console.error("POST /applications/:id/ai-analysis/run error:", err);
-    res.status(500).json({ error: "Failed to run AI", details: err.message });
+    res.status(500).json({ error: "Failed to run AI analysis", details: err.message });
   }
 });
+
+
+
 
 /* =========================================================
    7) POST /api/applications (create application)
@@ -414,6 +474,22 @@ router.post("/", upload.single("document"), async (req, res) => {
     } catch (e) {
       console.warn("AI run skipped/failed on create:", e.message);
     }
+    // Auto-run AI if a document was uploaded in the create call
+    try {
+      if (document_path) {
+        await pool.query(
+          `INSERT INTO documents (application_id, file_name, file_type, file_path)
+          VALUES ($1, $2, $3, $4)`,
+          [result.rows[0].id, req.file.originalname, req.file.mimetype, document_path]
+        );
+
+        // then run AI using documents table
+        await runAndPersistAi(result.rows[0].id);
+      }
+    } catch (aiErr) {
+      console.error("Auto AI run after create failed:", aiErr);
+      // don’t block creation flow; just log
+    }
 
     res.status(201).json({ message: "Application created", application: result.rows[0] });
   } catch (err) {
@@ -450,12 +526,13 @@ router.post("/:id/documents", upload.array("documents", 10), async (req, res) =>
     }
 
     // ✅ auto-run AI after docs upload
-    let ai = null;
+    // auto-run AI after uploading docs (now we have more evidence)
     try {
-      ai = await runAiForApplication(appId);
-    } catch (e) {
-      console.warn("AI run skipped/failed after upload:", e.message);
+      await runAndPersistAi(applicationDbId);
+    } catch (aiErr) {
+      console.error("Auto AI run after doc upload failed:", aiErr);
     }
+
 
     res.status(201).json({
       message: "Documents uploaded",
