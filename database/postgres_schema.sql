@@ -34,7 +34,17 @@ CREATE TABLE IF NOT EXISTS applications (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   pl_status VARCHAR(50) DEFAULT 'To Be Assign',
   sl_status VARCHAR(50) DEFAULT 'Pending',
-  registry_status VARCHAR(50) DEFAULT 'Pending'
+  registry_status VARCHAR(50) DEFAULT 'Pending',
+  programme VARCHAR(255),
+  nric_passport VARCHAR(50),
+
+  prev_year_completion VARCHAR(10),
+  prev_subject_name VARCHAR(255),
+
+  requested_subject_code VARCHAR(255),
+
+  mark_detected VARCHAR(50),
+  grade_detected VARCHAR(10)
 );
 
 -- ============================

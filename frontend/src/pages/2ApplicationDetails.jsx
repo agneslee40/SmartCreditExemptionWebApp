@@ -7,13 +7,14 @@ import { api } from "../api/client";
 function IconBack({ className = "" }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path
-        d="M15 18 9 12l6-6"
-        stroke="currentColor"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+      <path d="M15 18 9 12l6-6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+function IconSort({ className = "" }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M7 7h10M7 12h7M7 17h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
     </svg>
   );
 }
@@ -27,7 +28,7 @@ function IconEye({ className = "" }) {
         strokeLinejoin="round"
       />
       <path
-        d="M12 15a3 3 0 1 0 0-6 3 3 0 0"
+        d="M12 15a3 3 0 1 0 0-6 3 3 0 0" atl="currentColor"
         stroke="currentColor"
         strokeWidth="2"
       />
@@ -38,13 +39,7 @@ function IconDownload({ className = "" }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <path d="M12 3v10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-      <path
-        d="M8 10l4 4 4-4"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+      <path d="M8 10l4 4 4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
       <path d="M5 20h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
     </svg>
   );
@@ -54,7 +49,6 @@ function IconDownload({ className = "" }) {
 function StatusPill({ label, tone = "gray" }) {
   const toneMap = {
     orange: "bg-[#FF7A2F] text-black",
-    red: "bg-red-500 text-white",
     gray: "bg-[#D9D9D9] text-[#0B0F2A]",
   };
   return (
@@ -78,34 +72,18 @@ function InfoItem({ label, value, linkish = false }) {
     <div>
       <div className="text-sm font-semibold text-[#0B0F2A]/80">{label}</div>
       <div className={`mt-2 text-sm ${linkish ? "underline" : ""} text-[#0B0F2A]`}>
-        {value ?? "-"}
+        {value}
       </div>
     </div>
   );
 }
 
-function statusTone(status) {
-  if (!status) return "gray";
-  const s = String(status).toLowerCase();
-  if (s === "approved") return "orange";
-  if (s === "rejected") return "red";
-  return "gray";
-}
-
-function safeDate(d) {
-  if (!d) return "-";
-  const dt = new Date(d);
-  if (Number.isNaN(dt.getTime())) return "-";
-  return dt.toLocaleDateString();
-}
-
 export default function ApplicationDetails() {
-  const { id } = useParams(); // this is applications.id (numeric)
+  const { id } = useParams();
   const navigate = useNavigate();
-
+  
   const [app, setApp] = useState(null);
   const [docs, setDocs] = useState([]);
-  const [ai, setAi] = useState(null); // optional
   const [loading, setLoading] = useState(true);
 
   // sorting for documents
@@ -123,15 +101,6 @@ export default function ApplicationDetails() {
 
         setApp(appRes.data);
         setDocs(docsRes.data || []);
-
-        // OPTIONAL: only if you implement this route in backend (Part 2)
-        // If not implemented yet, it will fail silently.
-        try {
-          const aiRes = await api.get(`/applications/${id}/ai-analysis/latest`);
-          setAi(aiRes.data || null);
-        } catch {
-          setAi(null);
-        }
       } catch (e) {
         console.error(e);
         alert("Failed to load application details.");
@@ -142,6 +111,86 @@ export default function ApplicationDetails() {
 
     load();
   }, [id]);
+
+
+  // --- mock data to match your figma fields ---
+  const application = {
+    applicationId: id || "A001",
+    type: "Credit Exemption",
+    date: "7th January 2025",
+
+    // Personal & programme particulars
+    name: "Lee Wen Xuan",
+    programme: "BSc (Hons) in Computer Science",
+    studentId: "22115737",
+    nric: "020325-15-1560",
+    intake: "202301",
+    semester: "1",
+
+    // Status (right side)
+    stageStatus: {
+      subjectLecturer: "Approved",
+      programmeLeader: "Approved",
+      registry: "Pending",
+    },
+
+    // Supporting documents table
+    docs: [
+      { name: "LWX_SPM.pdf", type: "Transcript", details: "1 page", size: "7 MB" },
+      { name: "LWX_SPM.pdf", type: "Transcript", details: "1 page", size: "7 MB" },
+      // later: add "Sunway course syllabus pdf" row too
+    ],
+
+    // Academic particulars (the overflow section you showed)
+    academic: {
+      yearCompletion: "2021",
+      qualification: "Sijil Pelajaran Malaysia (SPM)",
+      institution: "Wesley Methodist School Kuala Lumpur (INTERNATIONAL)",
+      sunwaySubjectCode: "MPU 3213",
+      sunwaySubjectName: "Malay Language for Communication",
+      previousSubject: "Bahasa Melayu",
+      mark: "91%",
+      grade: "A+",
+    },
+  };
+
+  const [sortBy, setSortBy] = useState({ key: null, dir: "asc" });
+
+  const sortedDocs = useMemo(() => {
+    const list = [...docs];
+    const { key, dir } = docSort;
+
+    list.sort((a, b) => {
+      const av = a?.[key];
+      const bv = b?.[key];
+
+      // null last
+      if (av == null && bv == null) return 0;
+      if (av == null) return 1;
+      if (bv == null) return -1;
+
+      // numbers
+      if (typeof av === "number" && typeof bv === "number") {
+        return dir === "asc" ? av - bv : bv - av;
+      }
+
+      // dates
+      if (key === "uploaded_at") {
+        const ad = new Date(av).getTime();
+        const bd = new Date(bv).getTime();
+        return dir === "asc" ? ad - bd : bd - ad;
+      }
+
+      // strings
+      const as = String(av).toLowerCase();
+      const bs = String(bv).toLowerCase();
+      if (as < bs) return dir === "asc" ? -1 : 1;
+      if (as > bs) return dir === "asc" ? 1 : -1;
+      return 0;
+    });
+
+    return list;
+  }, [docs, docSort]);
 
   const toggleSort = (key) => {
     setDocSort((prev) => {
@@ -162,82 +211,15 @@ export default function ApplicationDetails() {
     return `${b.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
   };
 
-  const sortedDocs = useMemo(() => {
-    const list = [...docs];
-    const { key, dir } = docSort;
-
-    list.sort((a, b) => {
-      const av = a?.[key];
-      const bv = b?.[key];
-
-      if (av == null && bv == null) return 0;
-      if (av == null) return 1;
-      if (bv == null) return -1;
-
-      if (typeof av === "number" && typeof bv === "number") {
-        return dir === "asc" ? av - bv : bv - av;
-      }
-
-      if (key === "uploaded_at") {
-        const ad = new Date(av).getTime();
-        const bd = new Date(bv).getTime();
-        return dir === "asc" ? ad - bd : bd - ad;
-      }
-
-      const as = String(av).toLowerCase();
-      const bs = String(bv).toLowerCase();
-      if (as < bs) return dir === "asc" ? -1 : 1;
-      if (as > bs) return dir === "asc" ? 1 : -1;
-      return 0;
-    });
-
-    return list;
-  }, [docs, docSort]);
 
   const goBack = () => {
+    // goes back to Tasks page like figma, even if user opened in new tab
     if (window.history.length > 1) navigate(-1);
     else navigate("/tasks");
   };
 
   if (loading) return <div className="mt-10 text-sm">Loading…</div>;
   if (!app) return <div className="mt-10 text-sm">Application not found.</div>;
-
-  // --- View model from DB (app) + optional AI (ai) ---
-  const requestedSubjects = (app.requested_subject || "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-
-  const vm = {
-    header: {
-      type: app.type || "-",
-      displayId: app.application_id || app.id,
-      date: safeDate(app.created_at || app.date_submitted),
-    },
-    status: {
-      sl: app.sl_status || "Pending",
-      pl: app.pl_status || "Pending",
-      reg: app.registry_status || "Pending",
-    },
-    personal: {
-      name: app.student_name || "-",
-      programme: app.programme || "-", // will be added in Part 2
-      nric: app.nric_passport || "-",  // will be added in Part 2
-      studentId: app.student_id || "-",
-      intake: app.intake || "-",
-      semester: app.semester || "-",
-    },
-    academic: {
-      yearCompletion: app.prev_year_completion || "-", // Part 2
-      qualification: app.qualification || "-",
-      institution: app.former_institution || "-",
-      sunwaySubjectCode: app.requested_subject_code || "-", // Part 2
-      sunwaySubjectName: requestedSubjects.length ? requestedSubjects.join(", ") : "-",
-      previousSubject: app.prev_subject_name || "-", // Part 2
-      mark: (ai?.mark_detected ?? app.mark_detected) || "-", // Part 2 (or AI)
-      grade: (ai?.grade_detected ?? app.grade_detected) || "-", // you already have grade_detected in ai_analysis
-    },
-  };
 
   return (
     <div className="bg-white">
@@ -260,30 +242,46 @@ export default function ApplicationDetails() {
           {/* Type pill + id/date */}
           <div className="flex items-center gap-4 mt-4">
             <span className="rounded-full bg-[#EFEFEF] px-5 py-2 text-sm font-semibold text-[#0B0F2A]">
-              {vm.header.type}
+              {app.type || "-"}
             </span>
 
             <span className="text-sm font-semibold text-[#0B0F2A]/80">
-              {vm.header.displayId} | {vm.header.date}
+              {app.application_id || app.id}{" "}
+              |{" "}
+              {app.created_at
+                ? new Date(app.created_at).toLocaleDateString()
+                : app.date_submitted
+                ? new Date(app.date_submitted).toLocaleDateString()
+                : "-"}
             </span>
           </div>
+
         </div>
 
         {/* Right status stack */}
         <div className="mt-24 space-y-5 text-sm">
           <div className="flex items-center justify-end gap-4">
             <div className="text-[#0B0F2A]/80">Subject Lecturer</div>
-            <StatusPill label={vm.status.sl} tone={statusTone(vm.status.sl)} />
+            <StatusPill
+              label={application.stageStatus.subjectLecturer}
+              tone={application.stageStatus.subjectLecturer === "Approved" ? "orange" : "gray"}
+            />
           </div>
 
           <div className="flex items-center justify-end gap-4">
             <div className="text-[#0B0F2A]/80">Programme Leader</div>
-            <StatusPill label={vm.status.pl} tone={statusTone(vm.status.pl)} />
+            <StatusPill
+              label={application.stageStatus.programmeLeader}
+              tone={application.stageStatus.programmeLeader === "Approved" ? "orange" : "gray"}
+            />
           </div>
 
           <div className="flex items-center justify-end gap-4">
             <div className="text-[#0B0F2A]/80">Registry</div>
-            <StatusPill label={vm.status.reg} tone={statusTone(vm.status.reg)} />
+            <StatusPill
+              label={application.stageStatus.registry}
+              tone={application.stageStatus.registry === "Approved" ? "orange" : "gray"}
+            />
           </div>
         </div>
       </div>
@@ -293,14 +291,14 @@ export default function ApplicationDetails() {
         {/* Personal & Programme */}
         <CardShell title="Personal and Programme Particulars">
           <div className="grid grid-cols-2 gap-x-16 gap-y-8">
-            <InfoItem label="Name (as in NRIC / Passport)" value={vm.personal.name} linkish />
-            <InfoItem label="Programme" value={vm.personal.programme} linkish />
+            <InfoItem label="Name (as in NRIC / Passport)" value={application.name} linkish />
+            <InfoItem label="Programme" value={application.programme} linkish />
 
-            <InfoItem label="NRIC / Passport No." value={vm.personal.nric} linkish />
-            <InfoItem label="Student ID (for enrolled student)" value={vm.personal.studentId} linkish />
+            <InfoItem label="NRIC / Passport No." value={application.nric} linkish />
+            <InfoItem label="Student ID (for enrolled student)" value={application.studentId} linkish />
 
-            <InfoItem label="Intake" value={vm.personal.intake} linkish />
-            <InfoItem label="Semester" value={vm.personal.semester} />
+            <InfoItem label="Intake" value={application.intake} linkish />
+            <InfoItem label="Semester" value={application.semester} />
           </div>
         </CardShell>
 
@@ -333,29 +331,29 @@ export default function ApplicationDetails() {
                       <span className="underline underline-offset-4">{d.file_name}</span>
                     </td>
                     <td className="py-5 px-4 text-sm">{d.file_type || "-"}</td>
-                    <td className="py-5 px-4 text-sm">{d.uploaded_at ? String(d.uploaded_at).slice(0, 10) : "-"}</td>
+                    <td className="py-5 px-4 text-sm">
+                      {d.uploaded_at ? String(d.uploaded_at).slice(0, 10) : "-"}
+                    </td>
                     <td className="py-5 px-4 text-sm">{formatBytes(d.file_size)}</td>
 
                     <td className="py-5 pl-4">
-                      <div className="flex items-center justify-end gap-4">
+                      <div className="flex items-center justify-end gap-6">
+                        {/* View (eye) */}
                         <button
-                          onClick={() =>
-                            window.open(`http://localhost:5000/api/applications/documents/${d.id}/view`, "_blank")
-                          }
+                          onClick={() => window.open(`http://localhost:5000/api/applications/documents/${d.id}/view`, "_blank")}
                           className="rounded-lg p-2 hover:bg-black/5"
                           title="View"
                         >
-                          <IconEye className="h-5 w-5" />
+                          👁️
                         </button>
 
+                        {/* Download */}
                         <button
-                          onClick={() =>
-                            window.open(`http://localhost:5000/api/applications/documents/${d.id}/download`, "_blank")
-                          }
+                          onClick={() => window.open(`http://localhost:5000/api/applications/documents/${d.id}/download`, "_blank")}
                           className="rounded-lg p-2 hover:bg-black/5"
                           title="Download"
                         >
-                          <IconDownload className="h-5 w-5" />
+                          ⬇️
                         </button>
                       </div>
                     </td>
@@ -371,41 +369,42 @@ export default function ApplicationDetails() {
                 )}
               </tbody>
             </table>
+
           </div>
         </CardShell>
       </div>
 
-      {/* Academic Particulars */}
+      {/* Academic Particulars (full width, lower section like your pic 2) */}
       <div className="mt-10">
         <CardShell title="Academic Particulars">
           <div className="grid grid-cols-3 gap-x-16 gap-y-10">
-            <InfoItem label="Year of Completion" value={vm.academic.yearCompletion} linkish />
-            <InfoItem label="Qualification Obtained/ Programmed Studied" value={vm.academic.qualification} linkish />
-            <InfoItem label="Name of Institution" value={vm.academic.institution} linkish />
+            <InfoItem label="Year of Completion" value={application.academic.yearCompletion} linkish />
+            <InfoItem label="Qualification Obtained/ Programmed Studied" value={application.academic.qualification} linkish />
+            <InfoItem label="Name of Institution" value={application.academic.institution} linkish />
 
             <div className="col-span-3">
               <div className="mt-2 grid grid-cols-5 gap-x-16 gap-y-8">
                 <div>
                   <div className="text-sm font-semibold text-[#0B0F2A]/80">Sunway Subject Code, Name</div>
                   <div className="mt-2 flex gap-4">
-                    <span className="underline text-sm">{vm.academic.sunwaySubjectCode}</span>
-                    <span className="underline text-sm">{vm.academic.sunwaySubjectName}</span>
+                    <span className="underline text-sm">{application.academic.sunwaySubjectCode}</span>
+                    <span className="underline text-sm">{application.academic.sunwaySubjectName}</span>
                   </div>
                 </div>
 
                 <div>
                   <div className="text-sm font-semibold text-[#0B0F2A]/80">Subject Name (previously taken)</div>
-                  <div className="mt-2 underline text-sm">{vm.academic.previousSubject}</div>
+                  <div className="mt-2 underline text-sm">{application.academic.previousSubject}</div>
                 </div>
 
                 <div>
                   <div className="text-sm font-semibold text-[#0B0F2A]/80">Mark Obtained</div>
-                  <div className="mt-2 underline text-sm">{vm.academic.mark}</div>
+                  <div className="mt-2 underline text-sm">{application.academic.mark}</div>
                 </div>
 
                 <div>
                   <div className="text-sm font-semibold text-[#0B0F2A]/80">Grade</div>
-                  <div className="mt-2 text-sm">{vm.academic.grade}</div>
+                  <div className="mt-2 text-sm">{application.academic.grade}</div>
                 </div>
 
                 <div />

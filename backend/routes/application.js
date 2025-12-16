@@ -453,5 +453,24 @@ router.post("/:id/documents", upload.array("documents", 10), async (req, res) =>
   }
 });
 
+router.get("/:id/ai-analysis/latest", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const q = `
+      SELECT *
+      FROM ai_analysis
+      WHERE application_id = $1
+      ORDER BY analyzed_at DESC
+      LIMIT 1
+    `;
+    const { rows } = await pool.query(q, [id]);
+    res.json(rows[0] || null);
+  } catch (err) {
+    console.error("GET /applications/:id/ai-analysis/latest error:", err);
+    res.status(500).json({ error: "Failed to fetch AI analysis" });
+  }
+});
+
+
 
 export default router;
