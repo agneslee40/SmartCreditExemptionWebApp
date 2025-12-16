@@ -19,7 +19,6 @@ const storage = multer.diskStorage({
     cb(null, `${ts}_${safe}`);
   },
 });
-
 const upload = multer({
   storage,
   fileFilter: (req, file, cb) => {
@@ -29,85 +28,10 @@ const upload = multer({
 });
 
 /* =========================================================
-   AI SUGGESTED OUTCOME (STUB IMPLEMENTATION)
-   - You can replace this later with your real Python pipeline.
-   - This writes into:
-     1) ai_analysis table (history)
-     2) applications table (latest fields)
-   ========================================================= */
-async function runAiForApplication(applicationDbId) {
-  // 1) Load application + docs
-  const appRes = await pool.query(`SELECT * FROM applications WHERE id = $1`, [applicationDbId]);
-  if (appRes.rows.length === 0) throw new Error("Application not found");
-  const app = appRes.rows[0];
-
-  const docsRes = await pool.query(
-    `SELECT id, file_name, file_type, file_path, uploaded_at
-     FROM documents
-     WHERE application_id = $1
-     ORDER BY uploaded_at DESC`,
-    [applicationDbId]
-  );
-  const docs = docsRes.rows;
-
-  // 2) ---- STUB extraction logic ----
-  // Replace these with your real outputs later:
-  // - similarity: float 0..1
-  // - grade_detected: varchar
-  // - credit_hours: int
-  // - decision: Approve/Reject
-  //
-  // Example heuristic:
-  const gradeDetected = app.grade_detected || "A-";      // placeholder if not generated yet
-  const markDetected = app.mark_detected || "85";        // placeholder
-  const creditHours = 3;                                 // placeholder
-  const similarity = 0.82;                               // placeholder (82%)
-
-  // decision rule (same as your prototype)
-  const gradeOrder = ["F","D-","D","D+","C-","C","C+","B-","B","B+","A-","A","A+"];
-  const gradeOk = gradeOrder.indexOf(String(gradeDetected).toUpperCase()) >= gradeOrder.indexOf("C");
-  const simOk = similarity >= 0.8;
-  const creditOk = creditHours >= 3;
-
-  const decision = gradeOk && simOk && creditOk ? "Approve" : "Reject";
-
-  const reasoning = {
-    summary: "Stub reasoning (replace with real extraction later).",
-    checks: {
-      grade: { detected: gradeDetected, required: ">= C", pass: gradeOk },
-      similarity: { detected: similarity, required: ">= 0.80", pass: simOk },
-      credit_hours: { detected: creditHours, required: ">= 3", pass: creditOk },
-    },
-    docs_used: docs.map((d) => ({ id: d.id, file_name: d.file_name })),
-  };
-
-  // 3) Insert into ai_analysis history
-  const aiInsert = await pool.query(
-    `INSERT INTO ai_analysis (application_id, similarity, grade_detected, credit_hours, decision, reasoning)
-     VALUES ($1,$2,$3,$4,$5,$6)
-     RETURNING *`,
-    [applicationDbId, similarity, gradeDetected, creditHours, decision, reasoning]
-  );
-
-  const aiRow = aiInsert.rows[0];
-
-  // 4) Update latest fields in applications
-  // store similarity in ai_score (0..1) and decision in ai_decision
-  await pool.query(
-    `UPDATE applications
-     SET ai_score = $1,
-         ai_decision = $2,
-         mark_detected = $3,
-         grade_detected = $4
-     WHERE id = $5`,
-    [similarity, decision, markDetected, gradeDetected, applicationDbId]
-  );
-
-  return aiRow;
-}
-
-/* =========================================================
    1) GET /api/applications
+   - Returns list for Home/Tasks screens
+   - Supports filters: type, status, session, search
+   - Later can add "assigned_to" filtering
    ========================================================= */
 router.get("/", async (req, res) => {
   try {
@@ -125,6 +49,7 @@ router.get("/", async (req, res) => {
       where.push(`academic_session = $${vals.length}`);
     }
     if (q) {
+      // simple text search across common columns
       vals.push(`%${q}%`);
       where.push(`(
         student_name ILIKE $${vals.length} OR
@@ -150,6 +75,7 @@ router.get("/", async (req, res) => {
       ORDER BY a.date_submitted DESC, a.id DESC
       LIMIT 200;
     `;
+
 
     const result = await pool.query(sql, vals);
     res.json(result.rows);
@@ -195,9 +121,8 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-/* =========================================================
-   3) GET /api/applications/:id/documents
-   ========================================================= */
+
+// GET /api/applications/:id/documents
 router.get("/:id/documents", async (req, res) => {
   try {
     const appId = Number(req.params.id);
@@ -228,11 +153,7 @@ router.get("/:id/documents", async (req, res) => {
   }
 });
 
-/* =========================================================
-   4) Document view/download
-   NOTE: define these BEFORE "/:id" routes in real projects,
-   but this works because they start with "/documents/...".
-   ========================================================= */
+// GET /api/applications/documents/:docId/download
 router.get("/documents/:docId/download", async (req, res) => {
   try {
     const docId = Number(req.params.docId);
@@ -247,7 +168,10 @@ router.get("/documents/:docId/download", async (req, res) => {
     if (r.rows.length === 0) return res.status(404).json({ error: "Document not found" });
 
     const doc = r.rows[0];
-    if (!fs.existsSync(doc.file_path)) return res.status(404).json({ error: "File missing on server" });
+
+    if (!fs.existsSync(doc.file_path)) {
+      return res.status(404).json({ error: "File missing on server" });
+    }
 
     res.setHeader("Content-Type", doc.file_type || "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename="${doc.file_name}"`);
@@ -258,6 +182,7 @@ router.get("/documents/:docId/download", async (req, res) => {
   }
 });
 
+// GET /api/applications/documents/:docId/view
 router.get("/documents/:docId/view", async (req, res) => {
   try {
     const docId = Number(req.params.docId);
@@ -272,9 +197,13 @@ router.get("/documents/:docId/view", async (req, res) => {
     if (r.rows.length === 0) return res.status(404).json({ error: "Document not found" });
 
     const doc = r.rows[0];
-    if (!fs.existsSync(doc.file_path)) return res.status(404).json({ error: "File missing on server" });
+
+    if (!fs.existsSync(doc.file_path)) {
+      return res.status(404).json({ error: "File missing on server" });
+    }
 
     res.setHeader("Content-Type", doc.file_type || "application/pdf");
+    // inline = open in browser
     res.setHeader("Content-Disposition", `inline; filename="${doc.file_name}"`);
     fs.createReadStream(doc.file_path).pipe(res);
   } catch (err) {
@@ -283,45 +212,12 @@ router.get("/documents/:docId/view", async (req, res) => {
   }
 });
 
-/* =========================================================
-   5) GET latest AI analysis
-   ========================================================= */
-router.get("/:id/ai-analysis/latest", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const q = `
-      SELECT *
-      FROM ai_analysis
-      WHERE application_id = $1
-      ORDER BY analyzed_at DESC
-      LIMIT 1
-    `;
-    const { rows } = await pool.query(q, [id]);
-    res.json(rows[0] || null);
-  } catch (err) {
-    console.error("GET /applications/:id/ai-analysis/latest error:", err);
-    res.status(500).json({ error: "Failed to fetch AI analysis" });
-  }
-});
 
 /* =========================================================
-   6) POST run AI (manual regenerate)
-   ========================================================= */
-router.post("/:id/ai-analysis/run", async (req, res) => {
-  try {
-    const appId = Number(req.params.id);
-    if (!Number.isFinite(appId)) return res.status(400).json({ error: "Invalid application id" });
-
-    const aiRow = await runAiForApplication(appId);
-    res.json({ message: "AI analysis generated", ai: aiRow });
-  } catch (err) {
-    console.error("POST /applications/:id/ai-analysis/run error:", err);
-    res.status(500).json({ error: "Failed to run AI", details: err.message });
-  }
-});
-
-/* =========================================================
-   7) POST /api/applications (create application)
+   3) POST /api/applications
+   - Create application + (optional) upload PDF
+   - Matches “Upload / New request” flow
+   - For demo, PL can create; later students could too (if needed)
    ========================================================= */
 router.post("/", upload.single("document"), async (req, res) => {
   try {
@@ -329,21 +225,17 @@ router.post("/", upload.single("document"), async (req, res) => {
       application_id,
       student_name,
       student_id,
-      intake,
-      semester,
+      intake,          // e.g. "2025-01"
+      semester,        // e.g. "1"
       qualification,
       former_institution,
       requested_subject,
-      type,
+      type,            // "Credit Exemption" | "Credit Transfer"
       remarks,
-      date_submitted,
-      programme,
-      nric_passport,
-      prev_year_completion,
-      prev_subject_name,
-      requested_subject_code
+      date_submitted   // e.g. "15/12/2025"
     } = req.body;
 
+    // helper: convert "dd/mm/yyyy" -> "yyyy-mm-dd" for PostgreSQL DATE
     const toISODate = (s) => {
       if (!s) return null;
       const m = String(s).trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
@@ -354,6 +246,7 @@ router.post("/", upload.single("document"), async (req, res) => {
       return `${yyyy}-${mm}-${dd}`;
     };
 
+    // derive academic_session from intake+semester (example: "202501 | 1")
     const academic_session =
       intake && semester ? `${String(intake).replace("-", "")} | ${semester}` : null;
 
@@ -362,25 +255,19 @@ router.post("/", upload.single("document"), async (req, res) => {
     const result = await pool.query(
       `INSERT INTO applications
         (application_id, student_name, student_id,
-         intake, semester, academic_session,
-         qualification, former_institution, requested_subject,
-         type, date_submitted,
-         pl_status, sl_status, registry_status,
-         remarks, document_path,
-         programme, nric_passport,
-         prev_year_completion, prev_subject_name,
-         requested_subject_code)
-       VALUES
+          intake, semester, academic_session,
+          qualification, former_institution, requested_subject,
+          type, date_submitted,
+          pl_status, sl_status, registry_status,
+          remarks, document_path)
+        VALUES
         ($1,$2,$3,
-         $4,$5,$6,
-         $7,$8,$9,
-         $10,$11,
-         $12,$13,$14,
-         $15,$16,
-         $17,$18,
-         $19,$20,
-         $21)
-       RETURNING *`,
+          $4,$5,$6,
+          $7,$8,$9,
+          $10,$11,
+          $12,$13,$14,
+          $15,$16)
+        RETURNING *`,
       [
         application_id,
         student_name,
@@ -398,22 +285,8 @@ router.post("/", upload.single("document"), async (req, res) => {
         "Pending",
         remarks || null,
         document_path,
-        programme || null,
-        nric_passport || null,
-        prev_year_completion || null,
-        prev_subject_name || null,
-        requested_subject_code || null
       ]
     );
-
-    // OPTIONAL: If you want AI to run immediately on creation:
-    // Usually better to run after all docs are uploaded.
-    // If you uploaded 1 doc in this POST, you can run here.
-    try {
-      await runAiForApplication(result.rows[0].id);
-    } catch (e) {
-      console.warn("AI run skipped/failed on create:", e.message);
-    }
 
     res.status(201).json({ message: "Application created", application: result.rows[0] });
   } catch (err) {
@@ -423,14 +296,15 @@ router.post("/", upload.single("document"), async (req, res) => {
 });
 
 /* =========================================================
-   8) POST /api/applications/:id/documents (upload multiple)
-   - After upload, auto-run AI
+   3B) POST /api/applications/:id/documents
+   - Upload multiple PDFs for an existing application
+   - Saves file records into documents table
    ========================================================= */
 router.post("/:id/documents", upload.array("documents", 10), async (req, res) => {
   try {
-    const appId = Number(req.params.id);
-    if (!Number.isFinite(appId)) return res.status(400).json({ error: "Invalid application id" });
+    const appId = req.params.id;
 
+    // check application exists
     const app = await pool.query("SELECT id FROM applications WHERE id = $1", [appId]);
     if (app.rows.length === 0) return res.status(404).json({ error: "Application not found" });
 
@@ -438,6 +312,7 @@ router.post("/:id/documents", upload.array("documents", 10), async (req, res) =>
       return res.status(400).json({ error: "No files uploaded. Use key: documents" });
     }
 
+    // insert each uploaded file into documents table
     const inserted = [];
     for (const f of req.files) {
       const result = await pool.query(
@@ -449,23 +324,14 @@ router.post("/:id/documents", upload.array("documents", 10), async (req, res) =>
       inserted.push(result.rows[0]);
     }
 
-    // ✅ auto-run AI after docs upload
-    let ai = null;
-    try {
-      ai = await runAiForApplication(appId);
-    } catch (e) {
-      console.warn("AI run skipped/failed after upload:", e.message);
-    }
-
     res.status(201).json({
       message: "Documents uploaded",
       application_id: appId,
       documents: inserted,
-      ai_generated: ai,
     });
   } catch (err) {
     console.error("POST /applications/:id/documents error:", err);
-    res.status(500).json({ error: "Failed to upload documents", details: err.message });
+    res.status(500).json({ error: "Failed to upload documents" });
   }
 });
 
@@ -508,31 +374,34 @@ router.patch("/:id/assign", async (req, res) => {
 });
 
 /* =========================================================
-   9) PATCH /api/applications/:id (update decisions/status)
-   FIXED: removed undefined `status`
+   4) PATCH /api/applications/:id
+   - Update status / decisions (PL or SL action)
+   - Can call this from “Review” and “Application Details”
+   - Accepts ai_score/ai_decision too (when AI returns)
    ========================================================= */
 router.patch("/:id", async (req, res) => {
   try {
     const {
-      final_decision,
-      ai_score,
-      ai_decision,
+      final_decision,    // 'approved' | 'rejected'
+      ai_score,          // 0.0 - 1.0
+      ai_decision,       // 'approve' | 'reject'
       remarks,
-      pl_status,
-      sl_status,
+      pl_status,      
+      sl_status, 
       registry_status
     } = req.body;
 
+    // Build dynamic SET
     const sets = [];
     const vals = [];
-
+    if (status !== undefined)         { vals.push(status);         sets.push(`status = $${vals.length}`); }
     if (final_decision !== undefined) { vals.push(final_decision); sets.push(`final_decision = $${vals.length}`); }
     if (ai_score !== undefined)       { vals.push(ai_score);       sets.push(`ai_score = $${vals.length}`); }
     if (ai_decision !== undefined)    { vals.push(ai_decision);    sets.push(`ai_decision = $${vals.length}`); }
     if (remarks !== undefined)        { vals.push(remarks);        sets.push(`remarks = $${vals.length}`); }
-    if (pl_status !== undefined)      { vals.push(pl_status);      sets.push(`pl_status = $${vals.length}`); }
-    if (sl_status !== undefined)      { vals.push(sl_status);      sets.push(`sl_status = $${vals.length}`); }
-    if (registry_status !== undefined){ vals.push(registry_status);sets.push(`registry_status = $${vals.length}`); }
+    if (pl_status !== undefined)       { vals.push(pl_status);       sets.push(`pl_status = $${vals.length}`); }
+    if (sl_status !== undefined)       { vals.push(sl_status);       sets.push(`sl_status = $${vals.length}`); }
+    if (registry_status !== undefined) { vals.push(registry_status); sets.push(`registry_status = $${vals.length}`); }
 
     if (sets.length === 0) return res.status(400).json({ error: "Nothing to update" });
 
@@ -547,12 +416,32 @@ router.patch("/:id", async (req, res) => {
     );
 
     if (result.rows.length === 0) return res.status(404).json({ error: "Not found" });
-
     res.json({ message: "Application updated", application: result.rows[0] });
   } catch (err) {
     console.error("PATCH /applications/:id error:", err);
     res.status(500).json({ error: "Failed to update application" });
   }
 });
+
+
+router.get("/:id/ai-analysis/latest", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const q = `
+      SELECT *
+      FROM ai_analysis
+      WHERE application_id = $1
+      ORDER BY analyzed_at DESC
+      LIMIT 1
+    `;
+    const { rows } = await pool.query(q, [id]);
+    res.json(rows[0] || null);
+  } catch (err) {
+    console.error("GET /applications/:id/ai-analysis/latest error:", err);
+    res.status(500).json({ error: "Failed to fetch AI analysis" });
+  }
+});
+
+
 
 export default router;
