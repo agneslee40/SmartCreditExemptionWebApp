@@ -202,11 +202,18 @@ export default function ApplicationDetails() {
   if (loading) return <div className="mt-10 text-sm">Loading…</div>;
   if (!app) return <div className="mt-10 text-sm">Application not found.</div>;
 
-  // --- View model from DB (app) + optional AI (ai) ---
-  const requestedSubjects = (app.requested_subject || "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
+// ---- requested subjects from new table (preferred) ----
+  const reqList = Array.isArray(app.requested_subjects) ? app.requested_subjects : [];
+
+  const subjectNames = reqList
+    .map((x) => x?.subject_name)
+    .filter(Boolean)
+    .join(", ");
+
+  const subjectCodes = reqList
+    .map((x) => x?.subject_code)
+    .filter(Boolean)
+    .join(", ");
 
   const vm = {
     header: {
@@ -221,21 +228,21 @@ export default function ApplicationDetails() {
     },
     personal: {
       name: app.student_name || "-",
-      programme: app.programme || "-", // will be added in Part 2
-      nric: app.nric_passport || "-",  // will be added in Part 2
+      programme: app.programme || "-",
+      nric: app.nric_passport || "-",
       studentId: app.student_id || "-",
       intake: app.intake || "-",
       semester: app.semester || "-",
     },
     academic: {
-      yearCompletion: app.prev_year_completion || "-", // Part 2
+      yearCompletion: app.prev_year_completion || "-", 
       qualification: app.qualification || "-",
       institution: app.former_institution || "-",
-      sunwaySubjectCode: app.requested_subject_code || "-", // Part 2
-      sunwaySubjectName: requestedSubjects.length ? requestedSubjects.join(", ") : "-",
-      previousSubject: app.prev_subject_name || "-", // Part 2
-      mark: (ai?.mark_detected ?? app.mark_detected) || "-", // Part 2 (or AI)
-      grade: (ai?.grade_detected ?? app.grade_detected) || "-", // you already have grade_detected in ai_analysis
+      sunwaySubjectCode: subjectCodes || "-",
+      sunwaySubjectName: subjectNames || (app.requested_subject || "-"), // fallback if old column still used
+      previousSubject: app.prev_subject_name || "-", 
+      mark: (ai?.mark_detected ?? app.mark_detected) || "-", 
+      grade: (ai?.grade_detected ?? app.grade_detected) || "-", 
     },
   };
 

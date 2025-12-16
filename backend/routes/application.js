@@ -89,21 +89,38 @@ router.get("/", async (req, res) => {
    2) GET /api/applications/:id
    - Details page (3.2 Application Details)
    ========================================================= */
+// 2) GET /api/applications/:id  (Details page)
 router.get("/:id", async (req, res) => {
   try {
-    const result = await pool.query(
+    const appId = Number(req.params.id);
+    if (!Number.isFinite(appId)) return res.status(400).json({ error: "Invalid application id" });
+
+    const appResult = await pool.query(
       `SELECT *
        FROM applications
        WHERE id = $1`,
-      [req.params.id]
+      [appId]
     );
-    if (result.rows.length === 0) return res.status(404).json({ error: "Not found" });
-    res.json(result.rows[0]);
+    if (appResult.rows.length === 0) return res.status(404).json({ error: "Not found" });
+
+    const subjectsResult = await pool.query(
+      `SELECT subject_code, subject_name
+       FROM application_requested_subjects
+       WHERE application_id = $1
+       ORDER BY id ASC`,
+      [appId]
+    );
+
+    const app = appResult.rows[0];
+    app.requested_subjects = subjectsResult.rows; // array
+
+    res.json(app);
   } catch (err) {
     console.error("GET /applications/:id error:", err);
     res.status(500).json({ error: "Failed to fetch application" });
   }
 });
+
 
 // GET /api/applications/:id/documents
 router.get("/:id/documents", async (req, res) => {
@@ -406,52 +423,6 @@ router.patch("/:id", async (req, res) => {
   }
 });
 
-/* =========================================================
-   5) POST /api/applications/:id/documents
-   - Upload MULTIPLE PDFs for one application
-   - Saves files into backend/uploads
-   - Inserts rows into documents table
-   ========================================================= */
-router.post("/:id/documents", upload.array("documents", 10), async (req, res) => {
-  try {
-    const applicationDbId = Number(req.params.id);
-
-    if (!Number.isFinite(applicationDbId)) {
-      return res.status(400).json({ error: "Invalid application id" });
-    }
-
-    if (!req.files || req.files.length === 0) {
-      return res.status(400).json({ error: "No files uploaded. Use key 'documents'." });
-    }
-
-    // (Optional but recommended) ensure application exists
-    const check = await pool.query(`SELECT id FROM applications WHERE id = $1`, [applicationDbId]);
-    if (check.rows.length === 0) {
-      return res.status(404).json({ error: "Application not found" });
-    }
-
-    // Insert each uploaded file into documents table
-    const inserted = [];
-    for (const f of req.files) {
-      const r = await pool.query(
-        `INSERT INTO documents (application_id, file_name, file_type, file_path)
-         VALUES ($1, $2, $3, $4)
-         RETURNING *`,
-        [applicationDbId, f.originalname, f.mimetype, f.path]
-      );
-      inserted.push(r.rows[0]);
-    }
-
-    return res.status(201).json({
-      message: "Documents uploaded",
-      count: inserted.length,
-      documents: inserted,
-    });
-  } catch (err) {
-    console.error("POST /applications/:id/documents error:", err);
-    return res.status(500).json({ error: "Failed to upload documents" });
-  }
-});
 
 router.get("/:id/ai-analysis/latest", async (req, res) => {
   try {
