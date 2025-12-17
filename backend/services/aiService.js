@@ -221,8 +221,8 @@ export async function runAiAnalysis(application, documents, sunwayCourses = []) 
   }
 
   // 4) Similarity (keep your existing)
-  const similarity = Number(application.ai_score ?? 0.82);
-  const decision = application.ai_decision ?? "Approve";
+  const similarity = Number(application.ai_score ?? "null");
+  const decision = application.ai_decision ?? "Reject";
 
   // 5) Checks (adjust as you like)
   const checks = {

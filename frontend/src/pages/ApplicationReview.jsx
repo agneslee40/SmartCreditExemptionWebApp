@@ -71,6 +71,8 @@ export default function ApplicationReview() {
     return () => { mounted = false; };
   }, [id]);
 
+  
+
   // 2) Derived data (safe defaults so hooks never break)
   const docs = payload?.applicant_documents || [];
   const sunwayCourses = payload?.sunway_courses || [];
