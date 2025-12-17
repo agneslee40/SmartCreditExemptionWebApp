@@ -161,6 +161,17 @@ export function buildSimilarityEvidence(appText, sunwayText, topK = 10) {
   return { top_pairs: pairs.slice(0, topK), section_scores };
 }
 
+export function similarityFromEvidence(evidence) {
+  if (!evidence?.section_scores?.length) return 0;
+
+  // Option 1 (simple): take best section score
+  const best = Math.max(...evidence.section_scores.map(s => Number(s.avg_score || 0)));
+
+  // clamp 0..1
+  return Math.max(0, Math.min(1, best));
+}
+
+
 /* =========================================================
    Keep your existing runAiAnalysis stub (unchanged)
    ========================================================= */
@@ -221,7 +232,34 @@ export async function runAiAnalysis(application, documents, sunwayCourses = []) 
   }
 
   // 4) Similarity (keep your existing)
-  const similarity = Number(application.ai_score ?? "null");
+  // Extract text for ALL applicant docs (or at least syllabus-like ones)
+  // pick a single "best applicant doc" first (simple heuristic)
+  const applicantBest =
+    documents.find(d => /syllabus|module|course/i.test(d.file_name)) || documents[0];
+
+  const applicantText = await extractPdfText(applicantBest.file_path);
+
+  // 2) Compute similarity per requested Sunway course, then aggregate
+  const perCourse = [];
+  for (const c of sunwayCourses) {
+    const sunwayText = await extractPdfText(path.join(process.cwd(), "backend", c.syllabus_pdf_path));
+    const evidence = buildSimilarityEvidence(applicantText, sunwayText);
+
+    perCourse.push({
+      subject_code: c.subject_code,
+      subject_name: c.subject_name,
+      evidence,
+      score: similarityFromEvidence(evidence),
+    });
+  }
+
+  // aggregate: average (or max) across requested subjects
+  const similarity =
+    perCourse.length
+      ? perCourse.reduce((a, x) => a + x.score, 0) / perCourse.length
+      : 0;
+
+    
   const decision = application.ai_decision ?? "Reject";
 
   // 5) Checks (adjust as you like)
