@@ -633,31 +633,31 @@ router.patch("/:id", async (req, res) => {
 });
 
 // POST /api/applications/:id/override
+// Supports two flows:
+// 1) accept_ai: true  => mark reviewed using latest ai_analysis (reason NOT required)
+// 2) accept_ai: false => manual override values (reason REQUIRED)
 router.post("/:id/override", async (req, res) => {
   const client = await pool.connect();
   try {
     const appId = Number(req.params.id);
 
     const {
+      accept_ai,                 // true/false
       final_similarity,          // 0.82 (NOT 82)
       final_grade,               // "A-"
       final_credit_hours,        // 3
       final_equivalent_grade,    // optional
-      override_reason,           // required
-      final_decision,            // "Approve" / "Reject"
-      sunway_subject_code        // optional
+      override_reason,           // required only when manual override
+      final_decision,            // "Approve" / "Reject" (optional when accept_ai=true)
+      sunway_subject_code        // optional (for logging)
     } = req.body;
 
-    // TODO later: replace this with req.user.id from JWT middleware
+    // TODO later: replace with req.user.id from auth middleware
     const overriddenBy = req.body.overridden_by ?? null;
-
-    if (!override_reason || !String(override_reason).trim()) {
-      return res.status(400).json({ error: "override_reason is required" });
-    }
 
     await client.query("BEGIN");
 
-    // 1) fetch old values (for version_history)
+    // 0) fetch old values (for version_history)
     const oldR = await client.query(
       `SELECT final_similarity, final_grade, final_credit_hours, final_equivalent_grade, final_decision
        FROM applications WHERE id = $1`,
@@ -671,7 +671,50 @@ router.post("/:id/override", async (req, res) => {
 
     const old = oldR.rows[0];
 
-    // 2) update applications
+    // 1) decide effective values (either accept_ai or manual override)
+    let effSimilarity = final_similarity ?? null;
+    let effGrade = final_grade ?? null;
+    let effCreditHours = final_credit_hours ?? null;
+    let effEqGrade = final_equivalent_grade ?? null;
+    let effDecision = final_decision ?? null;
+    let effReason = override_reason ?? null;
+
+    if (accept_ai === true) {
+      // Pull latest AI analysis to “lock in” the review
+      const aiR = await client.query(
+        `SELECT similarity, grade_detected, credit_hours, decision
+         FROM ai_analysis
+         WHERE application_id = $1
+         ORDER BY analyzed_at DESC
+         LIMIT 1`,
+        [appId]
+      );
+
+      if (aiR.rowCount === 0) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ error: "No AI analysis found to accept" });
+      }
+
+      const ai = aiR.rows[0];
+      effSimilarity = ai.similarity ?? null;
+      effGrade = ai.grade_detected ?? null;
+      effCreditHours = ai.credit_hours ?? null;
+      effDecision = ai.decision ?? null;
+
+      // reason optional when accepting AI
+      effReason = (override_reason && String(override_reason).trim())
+        ? String(override_reason).trim()
+        : "Accepted AI suggestion (marked as reviewed)";
+    } else {
+      // manual override => reason required
+      if (!override_reason || !String(override_reason).trim()) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ error: "override_reason is required for manual override" });
+      }
+      effReason = String(override_reason).trim();
+    }
+
+    // 2) update applications (also mark SL reviewed if you want)
     const upd = await client.query(
       `UPDATE applications
        SET final_similarity = $1,
@@ -681,16 +724,17 @@ router.post("/:id/override", async (req, res) => {
            final_decision = $5,
            override_reason = $6,
            overridden_by = $7,
-           overridden_at = NOW()
+           overridden_at = NOW(),
+           sl_status = 'Reviewed'
        WHERE id = $8
        RETURNING *`,
       [
-        final_similarity ?? null,
-        final_grade ?? null,
-        final_credit_hours ?? null,
-        final_equivalent_grade ?? null,
-        final_decision ?? null,
-        override_reason,
+        effSimilarity,
+        effGrade,
+        effCreditHours,
+        effEqGrade,
+        effDecision,
+        effReason,
         overriddenBy,
         appId
       ]
@@ -719,6 +763,7 @@ router.post("/:id/override", async (req, res) => {
 
     return res.json({
       ok: true,
+      mode: accept_ai === true ? "accept_ai" : "manual_override",
       application: updated,
       logged_changes: changes.map(([field]) => field),
       sunway_subject_code: sunway_subject_code ?? null
