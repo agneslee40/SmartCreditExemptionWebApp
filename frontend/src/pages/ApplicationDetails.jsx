@@ -66,9 +66,9 @@ function StatusPill({ label, tone = "gray" }) {
 
 function CardShell({ title, children }) {
   return (
-    <div className="rounded-[28px] bg-[#EFEFEF] px-10 py-8">
+    <div className="rounded-[28px] bg-[#EFEFEF] px-8 py-7">
       <div className="text-xl font-extrabold text-[#0B0F2A]">{title}</div>
-      <div className="mt-6">{children}</div>
+      <div className="mt-5">{children}</div>
     </div>
   );
 }

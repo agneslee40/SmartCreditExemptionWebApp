@@ -103,7 +103,7 @@ function StatusBadge({ label, tone, rightSlot }) {
   };
   return (
     <div className="flex items-center gap-2">
-      <span className={`inline-flex items-center rounded-full px-4 py-2 text-sm font-semibold ${toneMap[tone]}`}>
+      <span className={`inline-flex items-center rounded-full px-3 py-1.5 text-xs font-semibold ${toneMap[tone]}`}>
         {label}
       </span>
       {rightSlot}
@@ -452,16 +452,16 @@ export default function TasksManagement() {
             <table className="min-w-[1750px] w-full text-left">
               <thead className="text-[#0B0F2A]/70">
                 <tr className="border-b border-black/10">
-                  <th className="px-8 py-6 text-sm font-semibold">ID</th>
-                  <th className="px-6 py-6 text-sm font-semibold">Date</th>
-                  <th className="px-6 py-6 text-sm font-semibold">Student ID, Name</th>
-                  <th className="px-6 py-6 text-sm font-semibold">Academic Session</th>
-                  <th className="px-6 py-6 text-sm font-semibold">Previously Take Qualification</th>
-                  <th className="px-6 py-6 text-sm font-semibold">Former Institution</th>
-                  <th className="px-6 py-6 text-sm font-semibold">Requested Subject</th>
-                  <th className="px-6 py-6 text-sm font-semibold">Type</th>
-                  <th className="px-6 py-6 text-sm font-semibold">Status</th>
-                  <th className="px-6 py-6 text-sm font-semibold">Remarks</th>
+                  <th className="px-8 py-4 text-sm font-semibold">ID</th>
+                  <th className="px-6 py-4 text-sm font-semibold">Date</th>
+                  <th className="px-6 py-4 text-sm font-semibold">Student ID, Name</th>
+                  <th className="px-6 py-4 text-sm font-semibold">Academic Session</th>
+                  <th className="px-6 py-4 text-sm font-semibold">Previously Take Qualification</th>
+                  <th className="px-6 py-4 text-sm font-semibold">Former Institution</th>
+                  <th className="px-6 py-4 text-sm font-semibold">Requested Subject</th>
+                  <th className="px-6 py-4 text-sm font-semibold">Type</th>
+                  <th className="px-6 py-4 text-sm font-semibold">Status</th>
+                  <th className="px-6 py-4 text-sm font-semibold">Remarks</th>
                 </tr>
               </thead>
 
@@ -474,38 +474,76 @@ export default function TasksManagement() {
                   return (
                     <React.Fragment key={a.id}>
                       {/* Row 1: data */}
-                      <tr className="border-b border-black/10 align-top">
-                        <td className="px-8 py-6 text-sm">{a.id}</td>
-                        <td className="px-6 py-6 text-sm">{a.date}</td>
-                        <td className="px-6 py-6 text-sm">
+                      <tr className="align-top">
+                        <td className="px-8 py-4 text-xs">{a.id}</td>
+                        <td className="px-6 py-4 text-xs">{a.date}</td>
+                        <td className="px-6 py-4 text-xs">
                           <div>{a.studentId}</div>
-                          <div className="text-[#0B0F2A]/60">{a.studentName}</div>
+                          <div className="text-[11px] text-[#0B0F2A]/60">{a.studentName}</div>
                         </td>
-                        <td className="px-6 py-6 text-sm">{a.academicSession}</td>
-                        <td className="px-6 py-6 text-sm">{a.prevQual}</td>
-                        <td className="px-6 py-6 text-sm">{a.formerInstitution}</td>
-                        <td className="px-6 py-6 text-sm">{a.requestedSubject}</td>
-                        <td className="px-6 py-6 text-sm">{a.type}</td>
+                        <td className="px-6 py-4 text-xs">{a.academicSession}</td>
+                        <td className="px-6 py-4 text-xs">
+                          <div
+                            style={{
+                              display: "-webkit-box",
+                              WebkitLineClamp: 2,
+                              WebkitBoxOrient: "vertical",
+                              overflow: "hidden",
+                            }}
+                            title={a.prevQual}
+                          >
+                            {a.prevQual}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-xs">
+                          <div
+                            style={{
+                              display: "-webkit-box",
+                              WebkitLineClamp: 1,
+                              WebkitBoxOrient: "vertical",
+                              overflow: "hidden",
+                            }}
+                            title={a.formerInstitution}
+                          >
+                            {a.formerInstitution}
+                          </div>
+                        </td>
+
+                        <td className="px-6 py-4 text-xs">
+                          <div
+                            style={{
+                              display: "-webkit-box",
+                              WebkitLineClamp: 2,
+                              WebkitBoxOrient: "vertical",
+                              overflow: "hidden",
+                            }}
+                            title={a.requestedSubject}
+                          >
+                            {a.requestedSubject}
+                          </div>
+                        </td>
+
+                        <td className="px-6 py-4 text-xs">{a.type}</td>
 
                         {/* Status column */}
-                        <td className="px-6 py-6 text-sm">
-                          <div className="space-y-3">
+                        <td className="px-6 py-4 text-xs">
+                          <div className="space-y-2">
                             <div className="flex items-center gap-3">
-                              <div className="w-[110px] text-[#0B0F2A]/70">Subject Lecturer</div>
+                              <div className="w-[92px] text-[11px] text-[#0B0F2A]/70">Subject Lecturer</div>
                               <StatusBadge
                                 label={a.stageStatus.subjectLecturer}
                                 tone={toneForStatus(a.stageStatus.subjectLecturer)}
                               />
                             </div>
                             <div className="flex items-center gap-3">
-                              <div className="w-[110px] text-[#0B0F2A]/70">Programme Leader</div>
+                              <div className="w-[92px] text-[11px] text-[#0B0F2A]/70">Programme Leader</div>
                               <StatusBadge
                                 label={a.stageStatus.programmeLeader}
                                 tone={toneForStatus(a.stageStatus.programmeLeader)}
                               />
                             </div>
                             <div className="flex items-center gap-3">
-                              <div className="w-[110px] text-[#0B0F2A]/70">Registry</div>
+                              <div className="w-[92px] text-[11px] text-[#0B0F2A]/70">Registry</div>
                               <StatusBadge
                                 label={a.stageStatus.registry}
                                 tone={toneForStatus(a.stageStatus.registry)}
@@ -547,8 +585,8 @@ export default function TasksManagement() {
 
                       {/* Row 2: action strip (matches your figma “pills + buttons”) */}
                       <tr className="border-b border-black/10">
-                        <td colSpan={10} className="px-8 py-6">
-                          <div className="flex items-center gap-6">
+                        <td colSpan={10} className="px-8 py-4">
+                          <div className="flex items-center gap-4">
                             {/* In Progress pill (not clickable) */}
                             <Pill className="bg-[#E9E2B2] text-[#0B0F2A]">
                               {a.progress}
