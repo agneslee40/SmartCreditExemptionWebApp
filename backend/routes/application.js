@@ -3,7 +3,8 @@ import pool from "../config/db.js";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-import { runAiAnalysis } from "../services/aiService.js";
+import { extractPdfText, buildSimilarityEvidence } from "../services/aiService.js";
+import { fileURLToPath } from "url";
 
 const router = express.Router();
 
@@ -83,6 +84,90 @@ async function runAndPersistAi(appId) {
 
   return insertR.rows[0];
 }
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// helper to convert "/uploads/xxx.pdf" -> absolute disk path
+function webPathToAbs(webPath) {
+  // webPath like "/uploads/sunway/ETC1023.pdf"
+  const clean = String(webPath || "").replace(/^\/+/, "");
+  // routes/ -> backend/ so go up one level
+  return path.join(__dirname, "..", clean);
+}
+
+// ==============================
+// GET similarity evidence
+// /api/applications/:id/evidence?sunway=ETC1023
+// ==============================
+router.get("/:id/evidence", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const sunwayCode = String(req.query.sunway || "").trim();
+
+    if (!sunwayCode) {
+      return res.status(400).json({ error: "Missing sunway code. Use ?sunway=ETC1023" });
+    }
+
+    // get applicant docs
+    const docsR = await pool.query(
+      `SELECT id, file_name, file_path
+       FROM documents
+       WHERE application_id = $1
+       ORDER BY uploaded_at ASC`,
+      [id]
+    );
+
+    // get sunway syllabus
+    const sunR = await pool.query(
+      `SELECT subject_code, subject_name, credit_hours, syllabus_pdf_path
+       FROM sunway_courses
+       WHERE subject_code = $1`,
+      [sunwayCode]
+    );
+
+    if (sunR.rows.length === 0) {
+      return res.status(404).json({ error: "Sunway course not found for that code." });
+    }
+
+    const sunway = sunR.rows[0];
+    const sunAbs = webPathToAbs(sunway.syllabus_pdf_path);
+
+    const sunwayText = await extractPdfTextFromPath(sunAbs);
+
+    // extract all applicant docs text
+    const applicantDocs = [];
+    for (const d of docsR.rows) {
+      // your documents.file_path is already absolute windows path
+      const abs = d.file_path;
+      const text = await extractPdfTextFromPath(abs);
+      applicantDocs.push({
+        id: d.id,
+        file_name: d.file_name,
+        text
+      });
+    }
+
+    const evidence = buildSimilarityEvidence({
+      sunwayText,
+      applicantDocs,
+      topK: 8
+    });
+
+    // return evidence + meta
+    return res.json({
+      sunway: {
+        subject_code: sunway.subject_code,
+        subject_name: sunway.subject_name,
+        credit_hours: sunway.credit_hours
+      },
+      evidence
+    });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Failed to compute similarity evidence" });
+  }
+});
 
 /* =========================================================
    0) GET /api/applications/:id/review
@@ -778,5 +863,63 @@ router.post("/:id/override", async (req, res) => {
 });
 
 
+
+/**
+ * GET /api/applications/:id/similarity-evidence?docId=12&sunwayCode=ETC1023
+ * Returns top matching text chunks as "evidence" (no PDF highlighting needed yet).
+ */
+router.get("/:id/similarity-evidence", async (req, res) => {
+  try {
+    const appId = Number(req.params.id);
+    const docId = Number(req.query.docId);
+    const sunwayCode = String(req.query.sunwayCode || "").trim();
+
+    if (!Number.isFinite(appId)) return res.status(400).json({ error: "Invalid application id" });
+    if (!Number.isFinite(docId)) return res.status(400).json({ error: "Invalid docId" });
+    if (!sunwayCode) return res.status(400).json({ error: "Missing sunwayCode" });
+
+    // 1) get applicant doc path
+    const docR = await pool.query(
+      "SELECT * FROM documents WHERE id=$1 AND application_id=$2",
+      [docId, appId]
+    );
+    const doc = docR.rows[0];
+    if (!doc) return res.status(404).json({ error: "Applicant document not found" });
+
+    // 2) get sunway syllabus path
+    const swR = await pool.query(
+      "SELECT * FROM sunway_courses WHERE subject_code=$1",
+      [sunwayCode]
+    );
+    const sw = swR.rows[0];
+    if (!sw) return res.status(404).json({ error: "Sunway course not found" });
+    if (!sw.syllabus_pdf_path) return res.status(400).json({ error: "Sunway syllabus_pdf_path missing" });
+
+    // doc.file_path = absolute windows path
+    const applicantPath = doc.file_path;
+
+    // sw.syllabus_pdf_path = "/uploads/sunway/ETC1023.pdf"
+    const swFilename = String(sw.syllabus_pdf_path).split("/").pop();
+    const sunwayPath = path.join(process.cwd(), "backend", "uploads", "sunway", swFilename);
+
+    // 3) extract text
+    const [appText, sunText] = await Promise.all([
+      extractPdfText(applicantPath),
+      extractPdfText(sunwayPath),
+    ]);
+
+    // 4) build evidence
+    const evidence = buildSimilarityEvidence(appText, sunText, 10);
+
+    return res.json({
+      applicant_doc: { id: doc.id, file_name: doc.file_name },
+      sunway_course: { subject_code: sw.subject_code, subject_name: sw.subject_name },
+      evidence
+    });
+  } catch (err) {
+    console.error("GET /applications/:id/similarity-evidence error:", err);
+    return res.status(500).json({ error: "Failed to generate similarity evidence", details: err.message });
+  }
+});
 
 export default router;

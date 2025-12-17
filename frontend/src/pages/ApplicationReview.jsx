@@ -25,89 +25,67 @@ export default function ApplicationReview() {
   const [selectedApplicantDocId, setSelectedApplicantDocId] = useState(null);
   const [selectedSunwayCode, setSelectedSunwayCode] = useState("");
 
-  // override UI state
+  // Override
   const [overrideOpen, setOverrideOpen] = useState(false);
-
-  // Override inputs
-  const [finalSimilarity, setFinalSimilarity] = useState(""); // percent 0-100
+  const [finalSimilarity, setFinalSimilarity] = useState(""); // percent
   const [finalGrade, setFinalGrade] = useState("");
   const [finalCreditHours, setFinalCreditHours] = useState("");
   const [overrideReason, setOverrideReason] = useState("");
 
-  async function reload() {
-    const res = await api.get(`/applications/${id}/review`);
-    const data = res.data;
-    setPayload(data);
+  // Evidence
+  const [eviLoading, setEviLoading] = useState(false);
+  const [eviError, setEviError] = useState("");
+  const [evidence, setEvidence] = useState(null);
 
-    const firstApplicant = data?.applicant_documents?.[0];
-    setSelectedApplicantDocId(firstApplicant?.id ?? null);
-
-    const firstSunway = data?.sunway_courses?.[0];
-    setSelectedSunwayCode(firstSunway?.subject_code ?? "");
-
-    // Initialize override fields:
-    // 1) if application already has final_* -> show those
-    // 2) else default to AI suggested values
-    const app = data?.application;
-    const ai = data?.ai_analysis;
-
-    const simPct =
-      app?.final_similarity != null
-        ? String(Math.round(app.final_similarity * 100))
-        : ai?.similarity != null
-          ? String(Math.round(ai.similarity * 100))
-          : "";
-
-    const grade =
-      app?.final_grade != null && app.final_grade !== ""
-        ? app.final_grade
-        : ai?.grade_detected ?? "";
-
-    const ch =
-      app?.final_credit_hours != null
-        ? String(app.final_credit_hours)
-        : ai?.credit_hours != null
-          ? String(ai.credit_hours)
-          : "";
-
-    setFinalSimilarity(simPct);
-    setFinalGrade(grade);
-    setFinalCreditHours(ch);
-
-    // if already overridden before, open the panel and show reason
-    if (app?.override_reason) {
-      setOverrideOpen(true);
-      setOverrideReason(app.override_reason);
-    } else {
-      setOverrideReason("");
-    }
-  }
-
+  // 1) Load review payload
   useEffect(() => {
-    (async () => {
+    let mounted = true;
+
+    async function load() {
       setLoading(true);
       try {
-        await reload();
+        const res = await api.get(`/applications/${id}/review`);
+        if (!mounted) return;
+
+        const data = res.data;
+        setPayload(data);
+
+        const firstApplicant = data?.applicant_documents?.[0];
+        setSelectedApplicantDocId(firstApplicant?.id ?? null);
+
+        const firstSunway = data?.sunway_courses?.[0];
+        setSelectedSunwayCode(firstSunway?.subject_code ?? "");
+
+        const ai = data?.ai_analysis;
+        setFinalSimilarity(ai?.similarity != null ? String(Math.round(ai.similarity * 100)) : "");
+        setFinalGrade(ai?.grade_detected ?? "");
+        setFinalCreditHours(ai?.credit_hours != null ? String(ai.credit_hours) : "");
       } catch (e) {
         console.error(e);
       } finally {
-        setLoading(false);
+        if (mounted) setLoading(false);
       }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }
+
+    load();
+    return () => { mounted = false; };
   }, [id]);
 
+  // 2) Derived data (safe defaults so hooks never break)
   const docs = payload?.applicant_documents || [];
   const sunwayCourses = payload?.sunway_courses || [];
-  const app = payload?.application;
-  const ai = payload?.ai_analysis;
+  const ai = payload?.ai_analysis || null;
+  const application = payload?.application || null;
 
-  const selectedApplicant =
-    docs.find((d) => d.id === selectedApplicantDocId) || null;
+  const selectedApplicant = useMemo(() => {
+    return docs.find(d => d.id === selectedApplicantDocId) || null;
+  }, [docs, selectedApplicantDocId]);
 
-  const selectedSunway =
-    sunwayCourses.find((c) => c.subject_code === selectedSunwayCode) || null;
+  const selectedSunway = useMemo(() => {
+    return sunwayCourses.find(c => c.subject_code === selectedSunwayCode) || null;
+  }, [sunwayCourses, selectedSunwayCode]);
 
+  // 3) Live rule evaluation (override inputs)
   const checks = useMemo(() => {
     const sim = Number(finalSimilarity);
     const ch = Number(finalCreditHours);
@@ -116,171 +94,179 @@ export default function ApplicationReview() {
     return {
       similarityPass: Number.isFinite(sim) && sim >= 80,
       gradePass: gradeAtLeastC(finalGrade),
-      creditHoursPass: Number.isFinite(ch) && ch >= sunwayCH,
+      creditHoursPass: Number.isFinite(ch) && ch >= sunwayCH
     };
   }, [finalSimilarity, finalGrade, finalCreditHours, selectedSunway]);
 
   const allPass = checks.similarityPass && checks.gradePass && checks.creditHoursPass;
-  const finalDecision = allPass ? "Approve" : "Reject";
 
-  async function acceptAI() {
-    if (!ai) {
-      alert("No AI analysis to accept yet.");
-      return;
+  // 4) Fetch similarity evidence whenever selection changes
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadEvidence() {
+      setEviError("");
+      setEvidence(null);
+
+      if (!selectedApplicantDocId || !selectedSunwayCode) return;
+
+      setEviLoading(true);
+      try {
+        const res = await api.get(
+          `/applications/${id}/similarity-evidence`,
+          { params: { docId: selectedApplicantDocId, sunwayCode: selectedSunwayCode } }
+        );
+        if (!mounted) return;
+        setEvidence(res.data);
+      } catch (e) {
+        console.error(e);
+        if (!mounted) return;
+        setEviError("Failed to load similarity evidence. Check backend console.");
+      } finally {
+        if (mounted) setEviLoading(false);
+      }
     }
-    try {
-      await api.post(`/applications/${id}/override`, {
-        final_similarity: ai.similarity,            // already 0-1
-        final_grade: ai.grade_detected,
-        final_credit_hours: ai.credit_hours,
-        override_reason: "Accepted AI recommendation",
-        final_decision: ai.decision || "Approve",
-        sunway_subject_code: selectedSunwayCode,
-      });
 
-      alert("Saved as Reviewed ✅ (AI accepted)");
-      await reload();
+    loadEvidence();
+    return () => { mounted = false; };
+  }, [id, selectedApplicantDocId, selectedSunwayCode]);
+
+  async function acceptAi() {
+    try {
+      await api.post(`/applications/${id}/accept-ai`, {
+        // optional: record which syllabus they were viewing
+        sunway_subject_code: selectedSunwayCode
+      });
+      alert("AI recommendation accepted ✅");
+      const res = await api.get(`/applications/${id}/review`);
+      setPayload(res.data);
     } catch (e) {
       console.error(e);
-      alert("Failed to accept AI ❌ (check backend logs)");
+      alert("Failed to accept AI ❌ (check backend route)");
     }
   }
 
   async function saveOverride() {
     if (!overrideReason.trim()) {
-      alert("Override reason is required.");
+      alert("Please enter an override reason (required).");
       return;
     }
+
     try {
       await api.post(`/applications/${id}/override`, {
         final_similarity: Number(finalSimilarity) / 100,
         final_grade: finalGrade,
         final_credit_hours: Number(finalCreditHours),
         override_reason: overrideReason,
-        final_decision: finalDecision,
-        sunway_subject_code: selectedSunwayCode,
+        final_decision: allPass ? "Approve" : "Reject",
+        sunway_subject_code: selectedSunwayCode
       });
 
       alert("Override saved ✅");
-      await reload();
+
+      const res = await api.get(`/applications/${id}/review`);
+      setPayload(res.data);
+      setOverrideOpen(false);
+      setOverrideReason("");
     } catch (e) {
       console.error(e);
-      alert("Failed to save override ❌ (check backend logs)");
+      alert("Failed to save override ❌ (check backend route / console)");
     }
   }
 
-  if (loading) return <div style={{ padding: 24 }}>Loading…</div>;
-  if (!payload) return <div style={{ padding: 24 }}>No data.</div>;
-
-  // Evidence placeholder (UI-ready)
-  const evidence = ai?.reasoning?.evidence || []; // later you fill this from backend
-
+  // 5) UI
   return (
-    <div style={{ padding: 16 }}>
-      {/* Header bar */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          gap: 16,
-          alignItems: "center",
-          marginBottom: 12,
-        }}
-      >
+    <div style={{ padding: 28 }}>
+      <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16 }}>
         <div>
-          <div style={{ fontSize: 22, fontWeight: 800 }}>Application Review</div>
+          <div style={{ fontSize: 28, fontWeight: 800, marginBottom: 4 }}>Application Review</div>
           <div style={{ color: "#666", fontSize: 13 }}>
-            {app?.application_id ? `Case: ${app.application_id}` : `ID: ${id}`}
-            {" "}•{" "}
-            {app?.type || "-"}
+            {application ? `Case: ${application.application_id} • ${application.type}` : "Loading case…"}
           </div>
         </div>
 
         <div style={{ display: "flex", gap: 10 }}>
           <button
-            onClick={acceptAI}
+            onClick={acceptAi}
             style={{
-              padding: "10px 12px",
+              padding: "10px 14px",
               borderRadius: 10,
               border: "1px solid #ddd",
               background: "#fff",
-              cursor: "pointer",
               fontWeight: 700,
+              cursor: "pointer"
             }}
+            disabled={!ai}
+            title={!ai ? "No AI analysis yet" : ""}
           >
             Accept AI Recommendation
           </button>
 
           <button
-            onClick={() => setOverrideOpen((v) => !v)}
+            onClick={() => setOverrideOpen(v => !v)}
             style={{
-              padding: "10px 12px",
+              padding: "10px 14px",
               borderRadius: 10,
-              border: "1px solid #ddd",
-              background: overrideOpen ? "#111827" : "#fff",
-              color: overrideOpen ? "#fff" : "#111827",
-              cursor: "pointer",
-              fontWeight: 700,
+              border: "none",
+              background: "#0f172a",
+              color: "#fff",
+              fontWeight: 800,
+              cursor: "pointer"
             }}
           >
-            {overrideOpen ? "Close Override" : "Override"}
+            {overrideOpen ? "Close Override" : "Override Decision"}
           </button>
         </div>
       </div>
 
-      {/* Main layout: Left panel + two PDFs */}
-      <div style={{ display: "flex", gap: 14, height: "calc(100vh - 170px)" }}>
-        {/* Left panel (LOCKED width so it will NEVER become cramped) */}
-        <div
-          style={{
-            flex: "0 0 360px",
-            minWidth: 360,
-            maxWidth: 360,
-            border: "1px solid #eee",
-            borderRadius: 16,
-            padding: 14,
-            overflowY: "auto",
-            background: "#fff",
-          }}
-        >
-          {/* Selectors */}
-          <div style={{ fontWeight: 800, marginBottom: 8 }}>Documents</div>
+      <div style={{ height: 16 }} />
 
-          <div style={{ marginBottom: 10 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>
+      {/* Main layout */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "340px 1fr 1fr",
+          gap: 16,
+          alignItems: "stretch"
+        }}
+      >
+        {/* LEFT: sidebar */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
+          {/* Documents card */}
+          <div style={cardStyle}>
+            <div style={cardTitle}>Documents</div>
+
+            <div style={{ fontSize: 12, color: "#666", fontWeight: 700, marginTop: 10 }}>
               Applicant Documents
             </div>
             <select
-              style={{ width: "100%", padding: 10, borderRadius: 10 }}
+              style={selectStyle}
               value={selectedApplicantDocId ?? ""}
               onChange={(e) => setSelectedApplicantDocId(Number(e.target.value))}
             >
-              {docs.map((d) => (
+              {docs.map(d => (
                 <option key={d.id} value={d.id}>
                   {d.file_name}
                 </option>
               ))}
             </select>
-          </div>
 
-          <div style={{ marginBottom: 10 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>
+            <div style={{ fontSize: 12, color: "#666", fontWeight: 700, marginTop: 12 }}>
               Sunway Syllabus
             </div>
-
             {sunwayCourses.length === 0 ? (
-              <div style={{ fontSize: 13, color: "crimson" }}>
+              <div style={{ fontSize: 13, color: "crimson", marginTop: 6 }}>
                 No Sunway course matched.
                 <br />
-                Check requested_subject_code and sunway_courses table.
+                Check requested_subject_code and sunway_courses.
               </div>
             ) : (
               <select
-                style={{ width: "100%", padding: 10, borderRadius: 10 }}
+                style={selectStyle}
                 value={selectedSunwayCode}
                 onChange={(e) => setSelectedSunwayCode(e.target.value)}
               >
-                {sunwayCourses.map((c) => (
+                {sunwayCourses.map(c => (
                   <option key={c.subject_code} value={c.subject_code}>
                     {c.subject_code} — {c.subject_name}
                   </option>
@@ -289,217 +275,279 @@ export default function ApplicationReview() {
             )}
           </div>
 
-          <hr style={{ margin: "14px 0" }} />
+          {/* System Suggestion */}
+          <div style={cardStyle}>
+            <div style={cardTitle}>System Suggestion</div>
 
-          {/* AI Decision card */}
-          <div style={{ fontWeight: 800, marginBottom: 8 }}>System Suggestion</div>
-          {ai ? (
-            <div
-              style={{
-                padding: 12,
-                borderRadius: 14,
-                background: "#f7f7f7",
-                border: "1px solid #eee",
-              }}
-            >
-              <div style={{ fontSize: 13, lineHeight: 1.5 }}>
+            {!ai ? (
+              <div style={{ fontSize: 13, color: "#666", marginTop: 10 }}>
+                No AI analysis yet.
+              </div>
+            ) : (
+              <div style={{ fontSize: 13, lineHeight: 1.5, marginTop: 8 }}>
                 <div><b>Decision:</b> {ai.decision}</div>
                 <div><b>Similarity:</b> {(ai.similarity * 100).toFixed(0)}%</div>
                 <div><b>Grade:</b> {ai.grade_detected || "-"}</div>
                 <div><b>Credit Hours:</b> {ai.credit_hours ?? "-"}</div>
+
+                <div style={{ marginTop: 10 }}>
+                  <div style={{ fontWeight: 800, marginBottom: 6 }}>Checks</div>
+                  <pre style={preStyle}>
+                    {JSON.stringify(ai.reasoning?.checks, null, 2)}
+                  </pre>
+                </div>
               </div>
+            )}
+          </div>
 
-              <div style={{ marginTop: 10 }}>
-                <div style={{ fontWeight: 800, fontSize: 13 }}>Checks</div>
-                <pre
-                  style={{
-                    whiteSpace: "pre-wrap",
-                    background: "#fff",
-                    padding: 10,
-                    borderRadius: 12,
-                    border: "1px solid #eee",
-                    fontSize: 12,
-                    marginTop: 6,
-                  }}
-                >
-                  {JSON.stringify(ai.reasoning?.checks, null, 2)}
-                </pre>
+          {/* Similarity Evidence */}
+          <div style={cardStyle}>
+            <div style={cardTitle}>Similarity Evidence</div>
+
+            {loading ? (
+              <div style={{ fontSize: 13, color: "#666", marginTop: 10 }}>Loading…</div>
+            ) : eviLoading ? (
+              <div style={{ fontSize: 13, color: "#666", marginTop: 10 }}>Extracting & matching text…</div>
+            ) : eviError ? (
+              <div style={{ fontSize: 13, color: "crimson", marginTop: 10 }}>{eviError}</div>
+            ) : !evidence?.evidence ? (
+              <div style={{ fontSize: 13, color: "#666", marginTop: 10 }}>
+                Select an applicant doc + Sunway syllabus to generate evidence.
               </div>
-            </div>
-          ) : (
-            <div style={{ fontSize: 13, color: "#666" }}>No AI analysis yet.</div>
-          )}
-
-          <hr style={{ margin: "14px 0" }} />
-
-          {/* Evidence placeholder */}
-          <div style={{ fontWeight: 800, marginBottom: 8 }}>Similarity Evidence</div>
-          {evidence.length === 0 ? (
-            <div style={{ fontSize: 13, color: "#666" }}>
-              Evidence not available yet.
-              <br />
-              (Next step: backend should return matched text pairs like
-              “Sunway CO1 ↔ Applicant topic paragraph”)
-            </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {evidence.map((ev, idx) => (
-                <div
-                  key={idx}
-                  style={{
-                    border: "1px solid #eee",
-                    borderRadius: 12,
-                    padding: 10,
-                    background: "#fff",
-                  }}
-                >
-                  <div style={{ fontSize: 12, color: "#666" }}>
-                    Match Score: {Math.round((ev.score ?? 0) * 100)}%
-                  </div>
-                  <div style={{ marginTop: 6, fontSize: 12 }}>
-                    <b>Sunway:</b> {ev.sunway_excerpt}
-                  </div>
-                  <div style={{ marginTop: 6, fontSize: 12 }}>
-                    <b>Applicant:</b> {ev.applicant_excerpt}
+            ) : (
+              <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 10 }}>
+                {/* section scores */}
+                <div>
+                  <div style={{ fontWeight: 800, marginBottom: 6 }}>Sections</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    {(evidence.evidence.section_scores || []).slice(0, 5).map((s) => (
+                      <div key={s.section} style={pillStyle}>
+                        {s.section}: {(s.avg_score * 100).toFixed(0)}% • {s.matches} matches
+                      </div>
+                    ))}
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
+
+                {/* top pairs */}
+                <div>
+                  <div style={{ fontWeight: 800, marginBottom: 6 }}>Top Matched Excerpts</div>
+                  {(evidence.evidence.top_pairs || []).map((p, idx) => (
+                    <div key={idx} style={evidenceCard}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                        <div style={{ fontWeight: 800 }}>
+                          Match #{idx + 1} • {(p.score * 100).toFixed(0)}%
+                        </div>
+                        <div style={{ fontSize: 12, color: "#666", fontWeight: 700 }}>
+                          {p.section}
+                        </div>
+                      </div>
+
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 8 }}>
+                        <div>
+                          <div style={smallLabel}>Applicant</div>
+                          <div style={excerptBox}>{p.applicant_excerpt}</div>
+                        </div>
+                        <div>
+                          <div style={smallLabel}>Sunway</div>
+                          <div style={excerptBox}>{p.sunway_excerpt}</div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div style={{ fontSize: 12, color: "#666" }}>
+                  *This evidence is generated by matching text chunks extracted from PDFs (local cosine similarity).
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Override panel */}
           {overrideOpen && (
-            <>
-              <hr style={{ margin: "14px 0" }} />
-              <div style={{ fontWeight: 800, marginBottom: 8 }}>Manual Override</div>
+            <div style={cardStyle}>
+              <div style={cardTitle}>Manual Override</div>
 
-              <div style={{ fontSize: 13 }}>
-                <label style={{ fontWeight: 700 }}>Final Similarity (%)</label>
+              <div style={{ fontSize: 13, marginTop: 10 }}>
+                <label style={labelStyle}>Final Similarity (%)</label>
                 <input
                   type="number"
                   value={finalSimilarity}
-                  onChange={(e) => setFinalSimilarity(e.target.value)}
-                  style={{ width: "100%", padding: 10, borderRadius: 10, marginTop: 6 }}
+                  onChange={e => setFinalSimilarity(e.target.value)}
+                  style={inputStyle}
                 />
 
-                <div style={{ height: 10 }} />
-
-                <label style={{ fontWeight: 700 }}>Final Grade</label>
+                <label style={labelStyle}>Final Grade</label>
                 <input
                   value={finalGrade}
-                  onChange={(e) => setFinalGrade(e.target.value)}
-                  style={{ width: "100%", padding: 10, borderRadius: 10, marginTop: 6 }}
+                  onChange={e => setFinalGrade(e.target.value)}
+                  style={inputStyle}
                 />
 
-                <div style={{ height: 10 }} />
-
-                <label style={{ fontWeight: 700 }}>Final Credit Hours</label>
+                <label style={labelStyle}>Final Credit Hours</label>
                 <input
                   type="number"
                   value={finalCreditHours}
-                  onChange={(e) => setFinalCreditHours(e.target.value)}
-                  style={{ width: "100%", padding: 10, borderRadius: 10, marginTop: 6 }}
+                  onChange={e => setFinalCreditHours(e.target.value)}
+                  style={inputStyle}
                 />
 
-                <div style={{ height: 10 }} />
-
-                <label style={{ fontWeight: 700 }}>Override Reason (required)</label>
+                <label style={labelStyle}>Override Reason (required)</label>
                 <textarea
                   rows={3}
                   value={overrideReason}
-                  onChange={(e) => setOverrideReason(e.target.value)}
-                  style={{ width: "100%", padding: 10, borderRadius: 10, marginTop: 6 }}
+                  onChange={e => setOverrideReason(e.target.value)}
+                  style={{ ...inputStyle, resize: "vertical" }}
                 />
-              </div>
 
-              <div
-                style={{
-                  marginTop: 12,
-                  padding: 12,
-                  borderRadius: 14,
-                  background: "#f7f7f7",
-                  border: "1px solid #eee",
-                }}
-              >
-                <div style={{ fontWeight: 800, marginBottom: 6 }}>Rule Evaluation</div>
-                <div>Similarity ≥ 80%: {checks.similarityPass ? "✅" : "❌"}</div>
-                <div>Grade ≥ C: {checks.gradePass ? "✅" : "❌"}</div>
-                <div>
-                  Credit Hours ≥ Sunway ({selectedSunway?.credit_hours ?? 0}):{" "}
-                  {checks.creditHoursPass ? "✅" : "❌"}
+                <div style={{ marginTop: 12, padding: 10, background: "#f7f7f7", borderRadius: 10 }}>
+                  <div style={{ fontWeight: 800, marginBottom: 6 }}>Rule Evaluation</div>
+                  <div>Similarity ≥ 80%: {checks.similarityPass ? "✅" : "❌"}</div>
+                  <div>Grade ≥ C: {checks.gradePass ? "✅" : "❌"}</div>
+                  <div>Credit Hours ≥ Sunway ({selectedSunway?.credit_hours ?? 0}): {checks.creditHoursPass ? "✅" : "❌"}</div>
+
+                  <div style={{ marginTop: 8 }}>
+                    <b>Final Decision:</b>{" "}
+                    <span style={{ color: allPass ? "green" : "crimson", fontWeight: 900 }}>
+                      {allPass ? "APPROVE" : "REJECT"}
+                    </span>
+                  </div>
                 </div>
 
-                <div style={{ marginTop: 8 }}>
-                  <b>Final Decision:</b>{" "}
-                  <span style={{ color: allPass ? "green" : "crimson" }}>
-                    {allPass ? "APPROVE" : "REJECT"}
-                  </span>
-                </div>
+                <button
+                  style={{
+                    marginTop: 12,
+                    width: "100%",
+                    padding: 10,
+                    borderRadius: 10,
+                    border: "none",
+                    background: "#0f172a",
+                    color: "#fff",
+                    fontWeight: 900,
+                    cursor: "pointer"
+                  }}
+                  onClick={saveOverride}
+                >
+                  Save Override
+                </button>
               </div>
-
-              <button
-                onClick={saveOverride}
-                style={{
-                  marginTop: 12,
-                  width: "100%",
-                  padding: 12,
-                  borderRadius: 12,
-                  border: "none",
-                  background: "#111827",
-                  color: "#fff",
-                  fontWeight: 800,
-                  cursor: "pointer",
-                }}
-              >
-                Save Override
-              </button>
-            </>
+            </div>
           )}
         </div>
 
-        {/* PDF columns */}
-        <div style={{ flex: 1, display: "flex", gap: 14, minWidth: 0 }}>
-          <div
-            style={{
-              flex: 1,
-              minWidth: 0,
-              border: "1px solid #eee",
-              borderRadius: 16,
-              background: "#fff",
-              overflow: "hidden",
-              display: "flex",
-              flexDirection: "column",
-            }}
-          >
-            <div style={{ padding: 12, fontWeight: 800, borderBottom: "1px solid #eee" }}>
-              Applicant PDF
-            </div>
-            <div style={{ flex: 1, minHeight: 0 }}>
-              <PdfViewer fileUrl={selectedApplicant?.file_url} />
-            </div>
+        {/* CENTER PDF */}
+        <div style={pdfCard}>
+          <div style={pdfTitle}>Applicant PDF</div>
+          <div style={pdfBody}>
+            {loading ? <div style={{ padding: 16 }}>Loading…</div> : <PdfViewer fileUrl={selectedApplicant?.file_url} />}
           </div>
+        </div>
 
-          <div
-            style={{
-              flex: 1,
-              minWidth: 0,
-              border: "1px solid #eee",
-              borderRadius: 16,
-              background: "#fff",
-              overflow: "hidden",
-              display: "flex",
-              flexDirection: "column",
-            }}
-          >
-            <div style={{ padding: 12, fontWeight: 800, borderBottom: "1px solid #eee" }}>
-              Sunway Syllabus PDF
-            </div>
-            <div style={{ flex: 1, minHeight: 0 }}>
-              <PdfViewer fileUrl={selectedSunway?.syllabus_url} />
-            </div>
+        {/* RIGHT PDF */}
+        <div style={pdfCard}>
+          <div style={pdfTitle}>Sunway Syllabus PDF</div>
+          <div style={pdfBody}>
+            {loading ? <div style={{ padding: 16 }}>Loading…</div> : <PdfViewer fileUrl={selectedSunway?.syllabus_url} />}
           </div>
         </div>
       </div>
     </div>
   );
 }
+
+/* ---------- styles ---------- */
+const cardStyle = {
+  background: "#fff",
+  border: "1px solid #eee",
+  borderRadius: 14,
+  padding: 14,
+  boxShadow: "0 1px 6px rgba(0,0,0,0.04)"
+};
+
+const cardTitle = {
+  fontWeight: 900,
+  fontSize: 16
+};
+
+const selectStyle = {
+  width: "100%",
+  padding: 10,
+  marginTop: 6,
+  borderRadius: 10,
+  border: "1px solid #ddd",
+  background: "#fff",
+  fontWeight: 700
+};
+
+const preStyle = {
+  whiteSpace: "pre-wrap",
+  background: "#f7f7f7",
+  padding: 10,
+  borderRadius: 10,
+  fontSize: 12,
+  maxHeight: 180,
+  overflow: "auto"
+};
+
+const labelStyle = { display: "block", marginTop: 10, fontWeight: 800 };
+const inputStyle = {
+  width: "100%",
+  padding: 10,
+  borderRadius: 10,
+  border: "1px solid #ddd",
+  marginTop: 6
+};
+
+const pdfCard = {
+  background: "#fff",
+  border: "1px solid #eee",
+  borderRadius: 14,
+  overflow: "hidden",
+  boxShadow: "0 1px 6px rgba(0,0,0,0.04)",
+  minWidth: 0
+};
+
+const pdfTitle = {
+  padding: "12px 14px",
+  fontWeight: 900,
+  borderBottom: "1px solid #eee"
+};
+
+const pdfBody = {
+  height: "calc(100vh - 210px)", // keeps PDFs visible without horizontal scroll
+  overflow: "hidden"
+};
+
+const pillStyle = {
+  padding: "6px 10px",
+  borderRadius: 999,
+  background: "#f7f7f7",
+  border: "1px solid #eee",
+  fontSize: 12,
+  fontWeight: 800
+};
+
+const evidenceCard = {
+  border: "1px solid #eee",
+  borderRadius: 12,
+  padding: 10,
+  background: "#fff"
+};
+
+const smallLabel = {
+  fontSize: 12,
+  fontWeight: 900,
+  color: "#666",
+  marginBottom: 4
+};
+
+const excerptBox = {
+  background: "#f7f7f7",
+  borderRadius: 10,
+  padding: 10,
+  fontSize: 12,
+  lineHeight: 1.4,
+  maxHeight: 120,
+  overflow: "auto",
+  border: "1px solid #eee"
+};
