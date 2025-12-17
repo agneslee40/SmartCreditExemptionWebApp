@@ -143,7 +143,7 @@ function TeamCard({ team, selected, onClick }) {
   );
 }
 
-function SelectedTeamPanel({ team }) {
+function SelectedTeamPanel({ team, onAddLecturer, onRemoveLecturer }) {
   if (!team) return null;
 
   return (
@@ -191,10 +191,10 @@ function SelectedTeamPanel({ team }) {
           <div className="text-xs font-extrabold text-[#0B0F2A]/70">Subject Lecturers</div>
 
           <div className="ml-auto flex items-center gap-2">
-            <SmallPillIconButton title="Add lecturer" onClick={() => {}}>
+            <SmallPillIconButton title="Add lecturer" onClick={onAddLecturer}>
               <IconPlus className="h-4 w-4" />
             </SmallPillIconButton>
-            <SmallPillIconButton title="Remove lecturer" onClick={() => {}}>
+            <SmallPillIconButton title="Remove lecturer" onClick={onRemoveLecturer}>
               <IconMinus className="h-4 w-4" />
             </SmallPillIconButton>
           </div>
@@ -219,96 +219,195 @@ function SelectedTeamPanel({ team }) {
 /* ------------------ main page ------------------ */
 export default function Teams() {
   // mock data (swap to API later)
-  const TEAMS = useMemo(
-    () => [
-      {
-        id: "t-cs",
-        name: "Computer Science",
-        bg: "#8E90C9", // purple-ish like figma
-        icon: "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=200&q=60",
-        plCount: 1,
-        slCount: 3,
-        avatars: [
-          "https://i.pravatar.cc/100?img=12",
-          "https://i.pravatar.cc/100?img=28",
-          "https://i.pravatar.cc/100?img=49",
-        ],
-        programmeLeader: {
-          name: "Dr. Alice Koo",
-          email: "alice.koo@sunway.edu.my",
-          avatar: "https://i.pravatar.cc/100?img=32",
-        },
-        subjectLecturers: [
-          {
-            name: "Dr. Sarveshshina",
-            email: "sarveshshina@sunway.edu.my",
-            avatar: "https://i.pravatar.cc/100?img=48",
-          },
-          {
-            name: "Dr. Yong Weng Han",
-            email: "wenghan.yong@sunway.edu.my",
-            avatar: "https://i.pravatar.cc/100?img=14",
-          },
-        ],
+  const initialTeams = [
+    {
+      id: "t-eng",
+      name: "Engineering",
+      bg: "#B7E3F7",
+      icon: "https://images.unsplash.com/photo-1581092335397-9fa3411082b2?auto=format&fit=crop&w=200&q=60",
+      plCount: 1,
+      slCount: 1,
+      avatars: [
+        "https://i.pravatar.cc/100?img=1",
+        "https://i.pravatar.cc/100?img=2",
+      ],
+      programmeLeader: {
+        name: "PL Demo",
+        email: "pl@sunway.edu.my",
+        avatar: "https://i.pravatar.cc/100?img=1",
       },
-      {
-        id: "t-fin",
-        name: "Finance",
-        bg: "#F7B5D8",
-        icon: "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?auto=format&fit=crop&w=200&q=60",
-        plCount: 1,
-        slCount: 3,
-        avatars: [
-          "https://i.pravatar.cc/100?img=11",
-          "https://i.pravatar.cc/100?img=26",
-          "https://i.pravatar.cc/100?img=37",
-        ],
-        programmeLeader: {
-          name: "Dr. Example (Finance)",
-          email: "pl.finance@sunway.edu.my",
-          avatar: "https://i.pravatar.cc/100?img=5",
+      subjectLecturers: [
+        {
+          name: "SL Demo",
+          email: "sl@sunway.edu.my",
+          avatar: "https://i.pravatar.cc/100?img=2",
         },
-        subjectLecturers: [
-          { name: "SL A", email: "sla@sunway.edu.my", avatar: "https://i.pravatar.cc/100?img=18" },
-          { name: "SL B", email: "slb@sunway.edu.my", avatar: "https://i.pravatar.cc/100?img=19" },
-        ],
-      },
-      {
-        id: "t-cul",
-        name: "Culinary",
-        bg: "#F6E57C",
-        icon: "https://images.unsplash.com/photo-1556910103-1c02745aae4d?auto=format&fit=crop&w=200&q=60",
-        plCount: 1,
-        slCount: 3,
-        avatars: [
-          "https://i.pravatar.cc/100?img=20",
-          "https://i.pravatar.cc/100?img=21",
-          "https://i.pravatar.cc/100?img=22",
-        ],
-        programmeLeader: {
-          name: "Dr. Example (Culinary)",
-          email: "pl.culinary@sunway.edu.my",
-          avatar: "https://i.pravatar.cc/100?img=9",
-        },
-        subjectLecturers: [
-          { name: "SL C", email: "slc@sunway.edu.my", avatar: "https://i.pravatar.cc/100?img=23" },
-          { name: "SL D", email: "sld@sunway.edu.my", avatar: "https://i.pravatar.cc/100?img=24" },
-        ],
-      },
-    ],
-    []
-  );
+      ],
+    },
 
+    {
+      id: "t-cs",
+      name: "Computer Science",
+      bg: "#8E90C9",
+      icon: "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=200&q=60",
+      plCount: 1,
+      slCount: 3,
+      avatars: [
+        "https://i.pravatar.cc/100?img=12",
+        "https://i.pravatar.cc/100?img=28",
+        "https://i.pravatar.cc/100?img=49",
+      ],
+      programmeLeader: {
+        name: "Dr. Alice Koo",
+        email: "alice.koo@sunway.edu.my",
+        avatar: "https://i.pravatar.cc/100?img=32",
+      },
+      subjectLecturers: [
+        {
+          name: "Dr. Sarveshshina",
+          email: "sarveshshina@sunway.edu.my",
+          avatar: "https://i.pravatar.cc/100?img=48",
+        },
+        {
+          name: "Dr. Yong Weng Han",
+          email: "wenghan.yong@sunway.edu.my",
+          avatar: "https://i.pravatar.cc/100?img=14",
+        },
+      ],
+    },
+    {
+      id: "t-fin",
+      name: "Finance",
+      bg: "#F7B5D8",
+      icon: "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?auto=format&fit=crop&w=200&q=60",
+      plCount: 1,
+      slCount: 3,
+      avatars: [
+        "https://i.pravatar.cc/100?img=11",
+        "https://i.pravatar.cc/100?img=26",
+        "https://i.pravatar.cc/100?img=37",
+      ],
+      programmeLeader: {
+        name: "Dr. Example (Finance)",
+        email: "pl.finance@sunway.edu.my",
+        avatar: "https://i.pravatar.cc/100?img=5",
+      },
+      subjectLecturers: [
+        { name: "SL A", email: "sla@sunway.edu.my", avatar: "https://i.pravatar.cc/100?img=18" },
+        { name: "SL B", email: "slb@sunway.edu.my", avatar: "https://i.pravatar.cc/100?img=19" },
+      ],
+    },
+    {
+      id: "t-cul",
+      name: "Culinary",
+      bg: "#F6E57C",
+      icon: "https://images.unsplash.com/photo-1556910103-1c02745aae4d?auto=format&fit=crop&w=200&q=60",
+      plCount: 1,
+      slCount: 3,
+      avatars: [
+        "https://i.pravatar.cc/100?img=20",
+        "https://i.pravatar.cc/100?img=21",
+        "https://i.pravatar.cc/100?img=22",
+      ],
+      programmeLeader: {
+        name: "Dr. Example (Culinary)",
+        email: "pl.culinary@sunway.edu.my",
+        avatar: "https://i.pravatar.cc/100?img=9",
+      },
+      subjectLecturers: [
+        { name: "SL C", email: "slc@sunway.edu.my", avatar: "https://i.pravatar.cc/100?img=23" },
+        { name: "SL D", email: "sld@sunway.edu.my", avatar: "https://i.pravatar.cc/100?img=24" },
+      ],
+    },
+  ];
+
+
+  const [teams, setTeams] = useState(initialTeams);
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState("t-cs");
 
+  const recalcCounts = (team) => ({
+    ...team,
+    slCount: team.subjectLecturers.length,
+    plCount: team.programmeLeader ? 1 : 0,
+    avatars: [
+      team.programmeLeader?.avatar,
+      ...team.subjectLecturers.map((x) => x.avatar),
+    ].filter(Boolean),
+  });
+
+  const handleAddLecturer = () => {
+    // For demo: always add SL Demo if not already inside
+    const slDemo = { name: "SL Demo", email: "sl@sunway.edu.my", avatar: "https://i.pravatar.cc/100?img=2" };
+
+    setTeams((prev) =>
+      prev.map((t) => {
+        if (t.id !== selectedId) return t;
+
+        const exists = t.subjectLecturers.some((x) => x.email === slDemo.email);
+        if (exists) return t;
+
+        const updated = { ...t, subjectLecturers: [...t.subjectLecturers, slDemo] };
+        return recalcCounts(updated);
+      })
+    );
+  };
+
+  const handleRemoveLecturer = () => {
+    setTeams((prev) =>
+      prev.map((t) => {
+        if (t.id !== selectedId) return t;
+        if (t.subjectLecturers.length === 0) return t;
+
+        const updated = { ...t, subjectLecturers: t.subjectLecturers.slice(0, -1) };
+        return recalcCounts(updated);
+      })
+    );
+  };
+
+  const handleAddTeam = () => {
+    const name = window.prompt("New team name?");
+    if (!name) return;
+
+    const id = `t-${Date.now()}`;
+    const newTeam = {
+      id,
+      name,
+      bg: "#D9D9D9",
+      icon: "https://images.unsplash.com/photo-1526378722484-bd91ca387e72?auto=format&fit=crop&w=200&q=60",
+      plCount: 1,
+      slCount: 0,
+      avatars: ["https://i.pravatar.cc/100?img=33"],
+      programmeLeader: {
+        name: "PL Demo",
+        email: "pl@sunway.edu.my",
+        avatar: "https://i.pravatar.cc/100?img=1",
+      },
+      subjectLecturers: [],
+    };
+
+    setTeams((prev) => [newTeam, ...prev]);
+    setSelectedId(id);
+  };
+
+  const handleRemoveTeam = () => {
+    if (teams.length <= 1) return;
+    const current = teams.find((t) => t.id === selectedId);
+    const ok = window.confirm(`Remove team "${current?.name}"?`);
+    if (!ok) return;
+
+    setTeams((prev) => prev.filter((t) => t.id !== selectedId));
+    const remaining = teams.filter((t) => t.id !== selectedId);
+    setSelectedId(remaining[0]?.id || "");
+  };
+
   const visibleTeams = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return TEAMS;
-    return TEAMS.filter((t) => t.name.toLowerCase().includes(q));
-  }, [TEAMS, search]);
+    if (!q) return teams;
+    return teams.filter((t) => t.name.toLowerCase().includes(q));
+  }, [teams, search]);
 
-  const selectedTeam = TEAMS.find((t) => t.id === selectedId) || TEAMS[0];
+  const selectedTeam = teams.find((t) => t.id === selectedId) || teams[0];
 
   return (
     <div className="bg-white">
@@ -319,10 +418,10 @@ export default function Teams() {
         </h1>
 
         <div className="flex items-center gap-3 pt-2">
-          <CircleIconButton title="Add team" onClick={() => {}}>
+          <CircleIconButton title="Add team" onClick={handleAddTeam}>
             <IconPlus className="h-5 w-5" />
           </CircleIconButton>
-          <CircleIconButton title="Remove team" onClick={() => {}}>
+          <CircleIconButton title="Remove team" onClick={handleRemoveTeam}>
             <IconMinus className="h-5 w-5" />
           </CircleIconButton>
         </div>
@@ -369,13 +468,21 @@ export default function Teams() {
 
         {/* Selected team panel */}
         <div className="hidden xl:block">
-          <SelectedTeamPanel team={selectedTeam} />
+          <SelectedTeamPanel
+            team={selectedTeam}
+            onAddLecturer={handleAddLecturer}
+            onRemoveLecturer={handleRemoveLecturer}
+          />
         </div>
       </div>
 
       {/* Small screen: selected panel drops below */}
       <div className="xl:hidden mt-10">
-        <SelectedTeamPanel team={selectedTeam} />
+        <SelectedTeamPanel
+          team={selectedTeam}
+          onAddLecturer={handleAddLecturer}
+          onRemoveLecturer={handleRemoveLecturer}
+        />
       </div>
     </div>
   );
