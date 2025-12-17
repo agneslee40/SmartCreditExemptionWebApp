@@ -1,647 +1,553 @@
-import React, { useEffect, useMemo, useState } from "react";
-import axios from "axios";
-import { useNavigate, useParams } from "react-router-dom";
-import { Document, Page, pdfjs } from "react-pdf";
+import { useEffect, useMemo, useState } from "react";
+import { useParams } from "react-router-dom";
+import { api } from "../api/client";
+import PdfViewer from "../components/PdfViewer";
 
-// IMPORTANT: make sure you have this somewhere in your app setup too.
-// If you already configured worker elsewhere, you can remove this line.
-pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-  "pdfjs-dist/build/pdf.worker.min.mjs",
-  import.meta.url
-).toString();
-
-const API = "http://localhost:5000/api";
+// Grade ranking helper (>= C)
+const GRADE_RANK = {
+  "A+": 13, "A": 12, "A-": 11,
+  "B+": 10, "B": 9, "B-": 8,
+  "C+": 7, "C": 6, "C-": 5,
+  "D+": 4, "D": 3, "D-": 2,
+  "F": 1
+};
+function gradeAtLeastC(g) {
+  const key = String(g || "").toUpperCase().trim();
+  return (GRADE_RANK[key] ?? 0) >= GRADE_RANK["C"];
+}
 
 export default function ApplicationReview() {
   const { id } = useParams();
-  const navigate = useNavigate();
 
   const [loading, setLoading] = useState(true);
-  const [runningAI, setRunningAI] = useState(false);
+  const [payload, setPayload] = useState(null);
 
-  const [application, setApplication] = useState(null);
-  const [applicantDocs, setApplicantDocs] = useState([]);
-  const [sunwayCourses, setSunwayCourses] = useState([]);
-  const [aiAnalysis, setAiAnalysis] = useState(null);
-
-  // selections
-  const [selectedDocId, setSelectedDocId] = useState(null);
+  const [selectedApplicantDocId, setSelectedApplicantDocId] = useState(null);
   const [selectedSunwayCode, setSelectedSunwayCode] = useState("");
 
-  // pdf paging + zoom
-  const [appNumPages, setAppNumPages] = useState(null);
-  const [sunNumPages, setSunNumPages] = useState(null);
-  const [appPage, setAppPage] = useState(1);
-  const [sunPage, setSunPage] = useState(1);
-  const [appScale, setAppScale] = useState(0.85);
-  const [sunScale, setSunScale] = useState(0.85);
-
-  // override UI
-  const [showOverride, setShowOverride] = useState(false);
-  const [overrideDecision, setOverrideDecision] = useState("Approve");
+  // Override
+  const [overrideOpen, setOverrideOpen] = useState(false);
+  const [finalSimilarity, setFinalSimilarity] = useState(""); // percent
+  const [finalGrade, setFinalGrade] = useState("");
+  const [finalCreditHours, setFinalCreditHours] = useState("");
   const [overrideReason, setOverrideReason] = useState("");
-  const [saving, setSaving] = useState(false);
 
-  const selectedDoc = useMemo(
-    () => applicantDocs.find((d) => d.id === Number(selectedDocId)),
-    [applicantDocs, selectedDocId]
-  );
+  // Evidence
+  const [eviLoading, setEviLoading] = useState(false);
+  const [eviError, setEviError] = useState("");
+  const [evidence, setEvidence] = useState(null);
 
-  const selectedSunway = useMemo(
-    () => sunwayCourses.find((s) => s.subject_code === selectedSunwayCode),
-    [sunwayCourses, selectedSunwayCode]
-  );
-
-  // load review payload
+  // 1) Load review payload
   useEffect(() => {
-    let alive = true;
+    let mounted = true;
 
     async function load() {
       setLoading(true);
       try {
-        const res = await axios.get(`${API}/applications/${id}/review`);
-        if (!alive) return;
+        const res = await api.get(`/applications/${id}/review`);
+        if (!mounted) return;
 
-        setApplication(res.data.application);
-        setApplicantDocs(res.data.applicant_documents || []);
-        setSunwayCourses(res.data.sunway_courses || []);
-        setAiAnalysis(res.data.ai_analysis || null);
+        const data = res.data;
+        setPayload(data);
 
-        // default selections
-        const firstDoc = (res.data.applicant_documents || [])[0];
-        const firstSun = (res.data.sunway_courses || [])[0];
+        const firstApplicant = data?.applicant_documents?.[0];
+        setSelectedApplicantDocId(firstApplicant?.id ?? null);
 
-        setSelectedDocId(firstDoc ? firstDoc.id : null);
-        setSelectedSunwayCode(firstSun ? firstSun.subject_code : "");
+        const firstSunway = data?.sunway_courses?.[0];
+        setSelectedSunwayCode(firstSunway?.subject_code ?? "");
 
-        setAppPage(1);
-        setSunPage(1);
+        const ai = data?.ai_analysis;
+        setFinalSimilarity(ai?.similarity != null ? String(Math.round(ai.similarity * 100)) : "");
+        setFinalGrade(ai?.grade_detected ?? "");
+        setFinalCreditHours(ai?.credit_hours != null ? String(ai.credit_hours) : "");
       } catch (e) {
         console.error(e);
       } finally {
-        if (alive) setLoading(false);
+        if (mounted) setLoading(false);
       }
     }
 
     load();
-    return () => {
-      alive = false;
-    };
+    return () => { mounted = false; };
   }, [id]);
 
-  // auto-run AI if none exists (after we have defaults)
+  // 2) Derived data (safe defaults so hooks never break)
+  const docs = payload?.applicant_documents || [];
+  const sunwayCourses = payload?.sunway_courses || [];
+  const ai = payload?.ai_analysis || null;
+  const application = payload?.application || null;
+
+  const selectedApplicant = useMemo(() => {
+    return docs.find(d => d.id === selectedApplicantDocId) || null;
+  }, [docs, selectedApplicantDocId]);
+
+  const selectedSunway = useMemo(() => {
+    return sunwayCourses.find(c => c.subject_code === selectedSunwayCode) || null;
+  }, [sunwayCourses, selectedSunwayCode]);
+
+  // 3) Live rule evaluation (override inputs)
+  const checks = useMemo(() => {
+    const sim = Number(finalSimilarity);
+    const ch = Number(finalCreditHours);
+    const sunwayCH = Number(selectedSunway?.credit_hours ?? 0);
+
+    return {
+      similarityPass: Number.isFinite(sim) && sim >= 80,
+      gradePass: gradeAtLeastC(finalGrade),
+      creditHoursPass: Number.isFinite(ch) && ch >= sunwayCH
+    };
+  }, [finalSimilarity, finalGrade, finalCreditHours, selectedSunway]);
+
+  const allPass = checks.similarityPass && checks.gradePass && checks.creditHoursPass;
+
+  // 4) Fetch similarity evidence whenever selection changes
   useEffect(() => {
-    if (loading) return;
-    if (!application) return;
-    if (aiAnalysis) return;
-    if (!selectedDocId || !selectedSunwayCode) return;
+    let mounted = true;
 
-    let alive = true;
+    async function loadEvidence() {
+      setEviError("");
+      setEvidence(null);
 
-    async function run() {
-      setRunningAI(true);
+      if (!selectedApplicantDocId || !selectedSunwayCode) return;
+
+      setEviLoading(true);
       try {
-        const res = await axios.post(`${API}/applications/${id}/run-ai`, {
-          docId: Number(selectedDocId),
-          sunwayCode: String(selectedSunwayCode),
-        });
-        if (!alive) return;
-        setAiAnalysis(res.data);
+        const res = await api.get(
+          `/applications/${id}/similarity-evidence`,
+          { params: { docId: selectedApplicantDocId, sunwayCode: selectedSunwayCode } }
+        );
+        if (!mounted) return;
+        setEvidence(res.data);
       } catch (e) {
         console.error(e);
+        if (!mounted) return;
+        setEviError("Failed to load similarity evidence. Check backend console.");
       } finally {
-        if (alive) setRunningAI(false);
+        if (mounted) setEviLoading(false);
       }
     }
 
-    run();
-    return () => {
-      alive = false;
-    };
-  }, [loading, application, aiAnalysis, id, selectedDocId, selectedSunwayCode]);
+    loadEvidence();
+    return () => { mounted = false; };
+  }, [id, selectedApplicantDocId, selectedSunwayCode]);
 
-  const similarityPct = useMemo(() => {
-    const sim = aiAnalysis?.similarity;
-    if (typeof sim !== "number") return "-";
-    return `${Math.round(sim * 100)}%`;
-  }, [aiAnalysis]);
-
-  const evidence = aiAnalysis?.reasoning?.evidence || null;
-  const topPairs = evidence?.top_pairs || [];
-  const sectionScores = evidence?.section_scores || [];
-
-  async function acceptAI() {
+  async function acceptAi() {
     try {
-      setSaving(true);
-      await axios.post(`${API}/applications/${id}/override`, {
-        accept_ai: true,
-        overridden_by: null, // later replace with auth user id
-        sunway_subject_code: selectedSunwayCode || null,
+      await api.post(`/applications/${id}/accept-ai`, {
+        // optional: record which syllabus they were viewing
+        sunway_subject_code: selectedSunwayCode
       });
-      // refresh review payload to reflect updated application fields (optional)
-      const res = await axios.get(`${API}/applications/${id}/review`);
-      setAiAnalysis(res.data.ai_analysis || aiAnalysis);
+      alert("AI recommendation accepted ✅");
+      const res = await api.get(`/applications/${id}/review`);
+      setPayload(res.data);
     } catch (e) {
       console.error(e);
-      alert("Failed to accept AI");
-    } finally {
-      setSaving(false);
+      alert("Failed to accept AI ❌ (check backend route)");
     }
   }
 
   async function saveOverride() {
     if (!overrideReason.trim()) {
-      alert("Override reason is required.");
+      alert("Please enter an override reason (required).");
       return;
     }
+
     try {
-      setSaving(true);
-      await axios.post(`${API}/applications/${id}/override`, {
-        accept_ai: false,
-        final_decision: overrideDecision,
-        override_reason: overrideReason.trim(),
-        overridden_by: null,
-        sunway_subject_code: selectedSunwayCode || null,
+      await api.post(`/applications/${id}/override`, {
+        final_similarity: Number(finalSimilarity) / 100,
+        final_grade: finalGrade,
+        final_credit_hours: Number(finalCreditHours),
+        override_reason: overrideReason,
+        final_decision: allPass ? "Approve" : "Reject",
+        sunway_subject_code: selectedSunwayCode
       });
-      setShowOverride(false);
+
+      alert("Override saved ✅");
+
+      const res = await api.get(`/applications/${id}/review`);
+      setPayload(res.data);
+      setOverrideOpen(false);
       setOverrideReason("");
-      // refresh
-      const res = await axios.get(`${API}/applications/${id}/review`);
-      setAiAnalysis(res.data.ai_analysis || aiAnalysis);
     } catch (e) {
       console.error(e);
-      alert("Failed to save override");
-    } finally {
-      setSaving(false);
+      alert("Failed to save override ❌ (check backend route / console)");
     }
   }
 
-  if (loading) return <div style={{ padding: 24 }}>Loading…</div>;
-  if (!application) return <div style={{ padding: 24 }}>No data.</div>;
-
+  // 5) UI
   return (
-    <div style={{ padding: "28px 40px" }}>
-      {/* Top bar: back + title + actions */}
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 16, justifyContent: "space-between" }}>
+    <div style={{ padding: 28 }}>
+      <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16 }}>
         <div>
-          <button
-            onClick={() => navigate(-1)}
-            style={{
-              border: "1px solid #e5e7eb",
-              background: "white",
-              borderRadius: 10,
-              padding: "8px 12px",
-              cursor: "pointer",
-              marginBottom: 14,
-            }}
-          >
-            ← Back
-          </button>
-
-          <h2 style={{ margin: 0 }}>Application Review</h2>
-          <div style={{ marginTop: 6, color: "#6b7280" }}>
-            Case: {application.application_id} • {application.type}
+          <div style={{ fontSize: 28, fontWeight: 800, marginBottom: 4 }}>Application Review</div>
+          <div style={{ color: "#666", fontSize: 13 }}>
+            {application ? `Case: ${application.application_id} • ${application.type}` : "Loading case…"}
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 10 }}>
           <button
-            onClick={acceptAI}
-            disabled={saving || runningAI || !aiAnalysis}
+            onClick={acceptAi}
             style={{
               padding: "10px 14px",
-              borderRadius: 12,
-              border: "1px solid #e5e7eb",
-              background: "white",
-              cursor: saving || runningAI || !aiAnalysis ? "not-allowed" : "pointer",
-              fontWeight: 600,
+              borderRadius: 10,
+              border: "1px solid #ddd",
+              background: "#fff",
+              fontWeight: 700,
+              cursor: "pointer"
             }}
-            title={!aiAnalysis ? "AI analysis not ready yet" : "Accept AI recommendation"}
+            disabled={!ai}
+            title={!ai ? "No AI analysis yet" : ""}
           >
             Accept AI Recommendation
           </button>
 
           <button
-            onClick={() => setShowOverride(true)}
-            disabled={saving}
+            onClick={() => setOverrideOpen(v => !v)}
             style={{
               padding: "10px 14px",
-              borderRadius: 12,
-              border: "1px solid #111827",
-              background: "#111827",
-              color: "white",
-              cursor: saving ? "not-allowed" : "pointer",
-              fontWeight: 600,
+              borderRadius: 10,
+              border: "none",
+              background: "#0f172a",
+              color: "#fff",
+              fontWeight: 800,
+              cursor: "pointer"
             }}
           >
-            Override
+            {overrideOpen ? "Close Override" : "Override Decision"}
           </button>
         </div>
       </div>
 
+      <div style={{ height: 16 }} />
+
       {/* Main layout */}
       <div
         style={{
-          marginTop: 18,
           display: "grid",
-          gridTemplateColumns: "360px 1fr 1fr",
-          gap: 18,
-          alignItems: "start",
+          gridTemplateColumns: "340px 1fr 1fr",
+          gap: 16,
+          alignItems: "stretch"
         }}
       >
-        {/* LEFT PANEL */}
-        <div
-          style={{
-            border: "1px solid #eef0f3",
-            borderRadius: 16,
-            padding: 16,
-            background: "white",
-            height: "calc(100vh - 220px)",
-            overflow: "auto",
-          }}
-        >
-          <h3 style={{ marginTop: 0 }}>Documents</h3>
+        {/* LEFT: sidebar */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
+          {/* Documents card */}
+          <div style={cardStyle}>
+            <div style={cardTitle}>Documents</div>
 
-          <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 6 }}>Applicant Documents</div>
-          <select
-            value={selectedDocId || ""}
-            onChange={(e) => {
-              setSelectedDocId(e.target.value);
-              setAppPage(1);
-            }}
-            style={{ width: "100%", padding: 10, borderRadius: 12, border: "1px solid #e5e7eb" }}
-          >
-            {applicantDocs.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.file_name}
-              </option>
-            ))}
-          </select>
+            <div style={{ fontSize: 12, color: "#666", fontWeight: 700, marginTop: 10 }}>
+              Applicant Documents
+            </div>
+            <select
+              style={selectStyle}
+              value={selectedApplicantDocId ?? ""}
+              onChange={(e) => setSelectedApplicantDocId(Number(e.target.value))}
+            >
+              {docs.map(d => (
+                <option key={d.id} value={d.id}>
+                  {d.file_name}
+                </option>
+              ))}
+            </select>
 
-          <div style={{ fontSize: 12, color: "#6b7280", marginTop: 14, marginBottom: 6 }}>Sunway Syllabus</div>
-          <select
-            value={selectedSunwayCode}
-            onChange={(e) => {
-              setSelectedSunwayCode(e.target.value);
-              setSunPage(1);
-            }}
-            style={{ width: "100%", padding: 10, borderRadius: 12, border: "1px solid #e5e7eb" }}
-          >
-            {sunwayCourses.map((s) => (
-              <option key={s.subject_code} value={s.subject_code}>
-                {s.subject_code} — {s.subject_name}
-              </option>
-            ))}
-          </select>
+            <div style={{ fontSize: 12, color: "#666", fontWeight: 700, marginTop: 12 }}>
+              Sunway Syllabus
+            </div>
+            {sunwayCourses.length === 0 ? (
+              <div style={{ fontSize: 13, color: "crimson", marginTop: 6 }}>
+                No Sunway course matched.
+                <br />
+                Check requested_subject_code and sunway_courses.
+              </div>
+            ) : (
+              <select
+                style={selectStyle}
+                value={selectedSunwayCode}
+                onChange={(e) => setSelectedSunwayCode(e.target.value)}
+              >
+                {sunwayCourses.map(c => (
+                  <option key={c.subject_code} value={c.subject_code}>
+                    {c.subject_code} — {c.subject_name}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
 
           {/* System Suggestion */}
-          <div style={{ marginTop: 18 }}>
-            <h3>System Suggestion</h3>
+          <div style={cardStyle}>
+            <div style={cardTitle}>System Suggestion</div>
 
-            <div
-              style={{
-                background: "#f9fafb",
-                border: "1px solid #eef0f3",
-                borderRadius: 14,
-                padding: 12,
-              }}
-            >
-              <div style={{ fontWeight: 700 }}>
-                Decision:{" "}
-                <span style={{ fontWeight: 700 }}>
-                  {runningAI ? "Generating…" : aiAnalysis?.decision || "-"}
-                </span>
+            {!ai ? (
+              <div style={{ fontSize: 13, color: "#666", marginTop: 10 }}>
+                No AI analysis yet.
               </div>
-              <div style={{ marginTop: 6, fontWeight: 700 }}>
-                Similarity: <span style={{ fontWeight: 700 }}>{runningAI ? "…" : similarityPct}</span>
+            ) : (
+              <div style={{ fontSize: 13, lineHeight: 1.5, marginTop: 8 }}>
+                <div><b>Decision:</b> {ai.decision}</div>
+                <div><b>Similarity:</b> {(ai.similarity * 100).toFixed(0)}%</div>
+                <div><b>Grade:</b> {ai.grade_detected || "-"}</div>
+                <div><b>Credit Hours:</b> {ai.credit_hours ?? "-"}</div>
+
+                <div style={{ marginTop: 10 }}>
+                  <div style={{ fontWeight: 800, marginBottom: 6 }}>Checks</div>
+                  <pre style={preStyle}>
+                    {JSON.stringify(ai.reasoning?.checks, null, 2)}
+                  </pre>
+                </div>
               </div>
-              <div style={{ marginTop: 8, fontSize: 12, color: "#6b7280" }}>
-                Similarity is computed from extracted PDF text and supported by the evidence below.
-              </div>
-            </div>
+            )}
           </div>
 
           {/* Similarity Evidence */}
-          <div style={{ marginTop: 18 }}>
-            <h3>Similarity Evidence</h3>
+          <div style={cardStyle}>
+            <div style={cardTitle}>Similarity Evidence</div>
 
-            {!aiAnalysis && !runningAI && (
-              <div style={{ fontSize: 13, color: "#6b7280" }}>
-                Evidence will appear after AI analysis is generated.
+            {loading ? (
+              <div style={{ fontSize: 13, color: "#666", marginTop: 10 }}>Loading…</div>
+            ) : eviLoading ? (
+              <div style={{ fontSize: 13, color: "#666", marginTop: 10 }}>Extracting & matching text…</div>
+            ) : eviError ? (
+              <div style={{ fontSize: 13, color: "crimson", marginTop: 10 }}>{eviError}</div>
+            ) : !evidence?.evidence ? (
+              <div style={{ fontSize: 13, color: "#666", marginTop: 10 }}>
+                Select an applicant doc + Sunway syllabus to generate evidence.
               </div>
-            )}
-
-            {runningAI && (
-              <div style={{ fontSize: 13, color: "#6b7280" }}>
-                Generating evidence…
-              </div>
-            )}
-
-            {!!aiAnalysis && (
-              <>
-                <div style={{ marginTop: 10 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>Sections</div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    {sectionScores.map((s) => (
-                      <div
-                        key={s.section}
-                        style={{
-                          border: "1px solid #e5e7eb",
-                          borderRadius: 999,
-                          padding: "6px 10px",
-                          background: "white",
-                          fontSize: 12,
-                          fontWeight: 600,
-                        }}
-                      >
-                        {s.section}: {Math.round(s.avg_score * 100)}% • {s.matches} matches
+            ) : (
+              <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 10 }}>
+                {/* section scores */}
+                <div>
+                  <div style={{ fontWeight: 800, marginBottom: 6 }}>Sections</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    {(evidence.evidence.section_scores || []).slice(0, 5).map((s) => (
+                      <div key={s.section} style={pillStyle}>
+                        {s.section}: {(s.avg_score * 100).toFixed(0)}% • {s.matches} matches
                       </div>
                     ))}
                   </div>
                 </div>
 
-                <div style={{ marginTop: 12 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Top Matched Excerpts</div>
-
-                  {topPairs.length === 0 && (
-                    <div style={{ fontSize: 13, color: "#6b7280" }}>
-                      No strong matches found (try different doc / syllabus).
-                    </div>
-                  )}
-
-                  {topPairs.map((p, idx) => (
-                    <div
-                      key={idx}
-                      style={{
-                        border: "1px solid #eef0f3",
-                        borderRadius: 14,
-                        padding: 12,
-                        background: "white",
-                        marginBottom: 10,
-                      }}
-                    >
+                {/* top pairs */}
+                <div>
+                  <div style={{ fontWeight: 800, marginBottom: 6 }}>Top Matched Excerpts</div>
+                  {(evidence.evidence.top_pairs || []).map((p, idx) => (
+                    <div key={idx} style={evidenceCard}>
                       <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
                         <div style={{ fontWeight: 800 }}>
-                          Match #{idx + 1} • {Math.round(p.score * 100)}%
+                          Match #{idx + 1} • {(p.score * 100).toFixed(0)}%
                         </div>
-                        <div style={{ fontSize: 12, color: "#6b7280", fontWeight: 700 }}>{p.section}</div>
+                        <div style={{ fontSize: 12, color: "#666", fontWeight: 700 }}>
+                          {p.section}
+                        </div>
                       </div>
 
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 8 }}>
                         <div>
-                          <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>Applicant</div>
-                          <div
-                            style={{
-                              background: "#f9fafb",
-                              border: "1px solid #eef0f3",
-                              borderRadius: 12,
-                              padding: 10,
-                              maxHeight: 120,
-                              overflow: "auto",
-                              fontSize: 12,
-                              lineHeight: 1.35,
-                              whiteSpace: "pre-wrap",
-                            }}
-                          >
-                            {p.applicant_excerpt}
-                          </div>
+                          <div style={smallLabel}>Applicant</div>
+                          <div style={excerptBox}>{p.applicant_excerpt}</div>
                         </div>
-
                         <div>
-                          <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>Sunway</div>
-                          <div
-                            style={{
-                              background: "#f9fafb",
-                              border: "1px solid #eef0f3",
-                              borderRadius: 12,
-                              padding: 10,
-                              maxHeight: 120,
-                              overflow: "auto",
-                              fontSize: 12,
-                              lineHeight: 1.35,
-                              whiteSpace: "pre-wrap",
-                            }}
-                          >
-                            {p.sunway_excerpt}
-                          </div>
+                          <div style={smallLabel}>Sunway</div>
+                          <div style={excerptBox}>{p.sunway_excerpt}</div>
                         </div>
                       </div>
                     </div>
                   ))}
-
-                  <div style={{ fontSize: 12, color: "#6b7280", marginTop: 6 }}>
-                    *Evidence is generated by matching text chunks extracted from PDFs (TF cosine).
-                  </div>
                 </div>
-              </>
+
+                <div style={{ fontSize: 12, color: "#666" }}>
+                  *This evidence is generated by matching text chunks extracted from PDFs (local cosine similarity).
+                </div>
+              </div>
             )}
           </div>
+
+          {/* Override panel */}
+          {overrideOpen && (
+            <div style={cardStyle}>
+              <div style={cardTitle}>Manual Override</div>
+
+              <div style={{ fontSize: 13, marginTop: 10 }}>
+                <label style={labelStyle}>Final Similarity (%)</label>
+                <input
+                  type="number"
+                  value={finalSimilarity}
+                  onChange={e => setFinalSimilarity(e.target.value)}
+                  style={inputStyle}
+                />
+
+                <label style={labelStyle}>Final Grade</label>
+                <input
+                  value={finalGrade}
+                  onChange={e => setFinalGrade(e.target.value)}
+                  style={inputStyle}
+                />
+
+                <label style={labelStyle}>Final Credit Hours</label>
+                <input
+                  type="number"
+                  value={finalCreditHours}
+                  onChange={e => setFinalCreditHours(e.target.value)}
+                  style={inputStyle}
+                />
+
+                <label style={labelStyle}>Override Reason (required)</label>
+                <textarea
+                  rows={3}
+                  value={overrideReason}
+                  onChange={e => setOverrideReason(e.target.value)}
+                  style={{ ...inputStyle, resize: "vertical" }}
+                />
+
+                <div style={{ marginTop: 12, padding: 10, background: "#f7f7f7", borderRadius: 10 }}>
+                  <div style={{ fontWeight: 800, marginBottom: 6 }}>Rule Evaluation</div>
+                  <div>Similarity ≥ 80%: {checks.similarityPass ? "✅" : "❌"}</div>
+                  <div>Grade ≥ C: {checks.gradePass ? "✅" : "❌"}</div>
+                  <div>Credit Hours ≥ Sunway ({selectedSunway?.credit_hours ?? 0}): {checks.creditHoursPass ? "✅" : "❌"}</div>
+
+                  <div style={{ marginTop: 8 }}>
+                    <b>Final Decision:</b>{" "}
+                    <span style={{ color: allPass ? "green" : "crimson", fontWeight: 900 }}>
+                      {allPass ? "APPROVE" : "REJECT"}
+                    </span>
+                  </div>
+                </div>
+
+                <button
+                  style={{
+                    marginTop: 12,
+                    width: "100%",
+                    padding: 10,
+                    borderRadius: 10,
+                    border: "none",
+                    background: "#0f172a",
+                    color: "#fff",
+                    fontWeight: 900,
+                    cursor: "pointer"
+                  }}
+                  onClick={saveOverride}
+                >
+                  Save Override
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* MIDDLE: Applicant PDF */}
-        <PdfCard
-          title="Applicant PDF"
-          fileUrl={selectedDoc?.file_url}
-          page={appPage}
-          setPage={setAppPage}
-          numPages={appNumPages}
-          setNumPages={setAppNumPages}
-          scale={appScale}
-          setScale={setAppScale}
-        />
-
-        {/* RIGHT: Sunway PDF */}
-        <PdfCard
-          title="Sunway Syllabus PDF"
-          fileUrl={selectedSunway?.syllabus_url}
-          page={sunPage}
-          setPage={setSunPage}
-          numPages={sunNumPages}
-          setNumPages={setSunNumPages}
-          scale={sunScale}
-          setScale={setSunScale}
-        />
-      </div>
-
-      {/* Override modal */}
-      {showOverride && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(17,24,39,0.35)",
-            display: "grid",
-            placeItems: "center",
-            zIndex: 50,
-          }}
-          onClick={() => setShowOverride(false)}
-        >
-          <div
-            style={{
-              width: 520,
-              background: "white",
-              borderRadius: 18,
-              padding: 18,
-              border: "1px solid #eef0f3",
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 style={{ marginTop: 0 }}>Manual Override</h3>
-
-            <div style={{ marginTop: 10 }}>
-              <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 6 }}>Final Decision</div>
-              <select
-                value={overrideDecision}
-                onChange={(e) => setOverrideDecision(e.target.value)}
-                style={{ width: "100%", padding: 10, borderRadius: 12, border: "1px solid #e5e7eb" }}
-              >
-                <option value="Approve">Approve</option>
-                <option value="Reject">Reject</option>
-              </select>
-            </div>
-
-            <div style={{ marginTop: 12 }}>
-              <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 6 }}>Override Reason (required)</div>
-              <textarea
-                value={overrideReason}
-                onChange={(e) => setOverrideReason(e.target.value)}
-                rows={4}
-                style={{
-                  width: "100%",
-                  padding: 10,
-                  borderRadius: 12,
-                  border: "1px solid #e5e7eb",
-                  resize: "vertical",
-                }}
-              />
-            </div>
-
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 14 }}>
-              <button
-                onClick={() => setShowOverride(false)}
-                style={{
-                  padding: "10px 14px",
-                  borderRadius: 12,
-                  border: "1px solid #e5e7eb",
-                  background: "white",
-                  cursor: "pointer",
-                  fontWeight: 600,
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={saveOverride}
-                disabled={saving}
-                style={{
-                  padding: "10px 14px",
-                  borderRadius: 12,
-                  border: "1px solid #111827",
-                  background: "#111827",
-                  color: "white",
-                  cursor: saving ? "not-allowed" : "pointer",
-                  fontWeight: 700,
-                }}
-              >
-                Save Override
-              </button>
-            </div>
+        {/* CENTER PDF */}
+        <div style={pdfCard}>
+          <div style={pdfTitle}>Applicant PDF</div>
+          <div style={pdfBody}>
+            {loading ? <div style={{ padding: 16 }}>Loading…</div> : <PdfViewer fileUrl={selectedApplicant?.file_url} />}
           </div>
         </div>
-      )}
-    </div>
-  );
-}
 
-function PdfCard({
-  title,
-  fileUrl,
-  page,
-  setPage,
-  numPages,
-  setNumPages,
-  scale,
-  setScale,
-}) {
-  return (
-    <div style={{ border: "1px solid #eef0f3", borderRadius: 16, background: "white", overflow: "hidden" }}>
-      <div style={{ padding: 14, borderBottom: "1px solid #eef0f3" }}>
-        <div style={{ fontWeight: 800 }}>{title}</div>
-
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
-          <button
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page <= 1}
-            style={btnSmall(page <= 1)}
-          >
-            Prev
-          </button>
-
-          <div style={{ fontSize: 13, fontWeight: 700 }}>
-            Page {page} / {numPages || "—"}
+        {/* RIGHT PDF */}
+        <div style={pdfCard}>
+          <div style={pdfTitle}>Sunway Syllabus PDF</div>
+          <div style={pdfBody}>
+            {loading ? <div style={{ padding: 16 }}>Loading…</div> : <PdfViewer fileUrl={selectedSunway?.syllabus_url} />}
           </div>
-
-          <button
-            onClick={() => setPage((p) => (numPages ? Math.min(numPages, p + 1) : p + 1))}
-            disabled={!!numPages && page >= numPages}
-            style={btnSmall(!!numPages && page >= numPages)}
-          >
-            Next
-          </button>
-
-          <div style={{ width: 1, height: 20, background: "#e5e7eb" }} />
-
-          <button onClick={() => setScale((s) => Math.max(0.6, Number((s - 0.1).toFixed(2))))} style={btnSmall(false)}>
-            −
-          </button>
-          <div style={{ fontSize: 13, fontWeight: 700 }}>{Math.round(scale * 100)}%</div>
-          <button onClick={() => setScale((s) => Math.min(1.6, Number((s + 0.1).toFixed(2))))} style={btnSmall(false)}>
-            +
-          </button>
         </div>
-      </div>
-
-      <div
-        style={{
-          height: "calc(100vh - 320px)",
-          overflow: "auto",
-          padding: 12, // padding reduces “trimmed edges” feeling
-          background: "white",
-        }}
-      >
-        {!fileUrl ? (
-          <div style={{ color: "#6b7280", padding: 14 }}>No PDF selected.</div>
-        ) : (
-          <Document
-            file={fileUrl}
-            onLoadSuccess={({ numPages: n }) => {
-              setNumPages(n);
-              setPage((p) => Math.min(p, n));
-            }}
-            loading={<div style={{ padding: 14 }}>Loading PDF…</div>}
-            error={<div style={{ padding: 14, color: "crimson" }}>Failed to load PDF.</div>}
-          >
-            <Page
-              pageNumber={page}
-              scale={scale}
-              renderTextLayer={false}
-              renderAnnotationLayer={false}
-            />
-          </Document>
-        )}
       </div>
     </div>
   );
 }
 
-function btnSmall(disabled) {
-  return {
-    padding: "6px 10px",
-    borderRadius: 10,
-    border: "1px solid #e5e7eb",
-    background: "white",
-    cursor: disabled ? "not-allowed" : "pointer",
-    fontWeight: 700,
-    opacity: disabled ? 0.5 : 1,
-  };
-}
+/* ---------- styles ---------- */
+const cardStyle = {
+  background: "#fff",
+  border: "1px solid #eee",
+  borderRadius: 14,
+  padding: 14,
+  boxShadow: "0 1px 6px rgba(0,0,0,0.04)"
+};
+
+const cardTitle = {
+  fontWeight: 900,
+  fontSize: 16
+};
+
+const selectStyle = {
+  width: "100%",
+  padding: 10,
+  marginTop: 6,
+  borderRadius: 10,
+  border: "1px solid #ddd",
+  background: "#fff",
+  fontWeight: 700
+};
+
+const preStyle = {
+  whiteSpace: "pre-wrap",
+  background: "#f7f7f7",
+  padding: 10,
+  borderRadius: 10,
+  fontSize: 12,
+  maxHeight: 180,
+  overflow: "auto"
+};
+
+const labelStyle = { display: "block", marginTop: 10, fontWeight: 800 };
+const inputStyle = {
+  width: "100%",
+  padding: 10,
+  borderRadius: 10,
+  border: "1px solid #ddd",
+  marginTop: 6
+};
+
+const pdfCard = {
+  background: "#fff",
+  border: "1px solid #eee",
+  borderRadius: 14,
+  overflow: "hidden",
+  boxShadow: "0 1px 6px rgba(0,0,0,0.04)",
+  minWidth: 0
+};
+
+const pdfTitle = {
+  padding: "12px 14px",
+  fontWeight: 900,
+  borderBottom: "1px solid #eee"
+};
+
+const pdfBody = {
+  height: "calc(100vh - 210px)", // keeps PDFs visible without horizontal scroll
+  overflow: "hidden"
+};
+
+const pillStyle = {
+  padding: "6px 10px",
+  borderRadius: 999,
+  background: "#f7f7f7",
+  border: "1px solid #eee",
+  fontSize: 12,
+  fontWeight: 800
+};
+
+const evidenceCard = {
+  border: "1px solid #eee",
+  borderRadius: 12,
+  padding: 10,
+  background: "#fff"
+};
+
+const smallLabel = {
+  fontSize: 12,
+  fontWeight: 900,
+  color: "#666",
+  marginBottom: 4
+};
+
+const excerptBox = {
+  background: "#f7f7f7",
+  borderRadius: 10,
+  padding: 10,
+  fontSize: 12,
+  lineHeight: 1.4,
+  maxHeight: 120,
+  overflow: "auto",
+  border: "1px solid #eee"
+};

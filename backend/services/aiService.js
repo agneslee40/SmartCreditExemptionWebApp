@@ -1,179 +1,189 @@
 // backend/services/aiService.js
 import fs from "fs/promises";
 import path from "path";
-import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
+
+// ✅ Use pdfjs-dist directly (no pdf-parse)
+import * as pdfjs from "pdfjs-dist/legacy/build/pdf.mjs";
+
+// In Node, pdfjs needs a worker disabled
+// (legacy build usually works without explicit worker config)
+
 
 // -------------------------
-// PDF text extraction
+// PDF -> TEXT (robust)
 // -------------------------
 export async function extractPdfText(filePath) {
   const buf = await fs.readFile(filePath);
-  const data = new Uint8Array(buf); // IMPORTANT: pdfjs expects Uint8Array (not Buffer)
+  const data = new Uint8Array(buf);
 
-  const loadingTask = pdfjsLib.getDocument({
+  const loadingTask = pdfjs.getDocument({
     data,
-    disableWorker: true, // IMPORTANT for Node
+    disableWorker: true,  // ✅ Node: avoid workerSrc issues
   });
-
   const pdf = await loadingTask.promise;
 
   let fullText = "";
+
   for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
     const page = await pdf.getPage(pageNum);
     const content = await page.getTextContent();
-    const strings = content.items.map((it) => it.str);
-    fullText += strings.join(" ") + "\n";
+
+    const pageText = content.items
+      .map((it) => (it.str ? String(it.str) : ""))
+      .join(" ");
+
+    fullText += pageText + "\n";
   }
 
-  return normalizeText(fullText);
+  return fullText;
 }
 
-function normalizeText(t) {
-  return String(t || "")
-    .replace(/\s+/g, " ")
-    .replace(/–/g, "-")
-    .replace(/[“”]/g, '"')
-    .trim();
-}
+/* =========================================================
+   Similarity Evidence Engine (chunk cosine)
+   ========================================================= */
 
-// -------------------------
-// Similarity helpers (TF cosine)
-// -------------------------
-function tokenize(text) {
+const STOP = new Set([
+  "the","a","an","and","or","to","of","in","on","for","with","is","are","was","were",
+  "this","that","these","those","as","at","by","from","be","been","it","its","will",
+  "can","may","should","must","not","no","yes","your","you","we","our","their","they",
+  "course","module","students","student"
+]);
+
+function normalizeTokens(text) {
   return String(text || "")
     .toLowerCase()
-    .replace(/[^a-z0-9+\-/\s]/g, " ")
+    .replace(/[^a-z0-9\s]/g, " ")
     .split(/\s+/)
-    .filter(Boolean)
-    .filter((w) => w.length >= 2);
+    .map(t => t.trim())
+    .filter(t => t.length >= 3 && !STOP.has(t));
 }
 
-function termFreq(tokens) {
+function tfVector(tokens) {
   const m = new Map();
   for (const t of tokens) m.set(t, (m.get(t) || 0) + 1);
   return m;
 }
 
-function cosineFromTF(tfA, tfB) {
-  // dot / (||A|| * ||B||)
-  let dot = 0;
-  let normA = 0;
-  let normB = 0;
+function cosineSim(a, b) {
+  let dot = 0, na = 0, nb = 0;
+  for (const v of a.values()) na += v * v;
+  for (const v of b.values()) nb += v * v;
+  na = Math.sqrt(na); nb = Math.sqrt(nb);
+  if (!na || !nb) return 0;
 
-  for (const [, v] of tfA) normA += v * v;
-  for (const [, v] of tfB) normB += v * v;
-
-  // iterate smaller map for dot
-  const [small, big] = tfA.size < tfB.size ? [tfA, tfB] : [tfB, tfA];
-  for (const [k, v] of small) {
-    const vb = big.get(k);
-    if (vb) dot += v * vb;
+  const [small, big] = a.size <= b.size ? [a, b] : [b, a];
+  for (const [k, v] of small.entries()) {
+    const bv = big.get(k);
+    if (bv) dot += v * bv;
   }
-
-  if (normA === 0 || normB === 0) return 0;
-  return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+  return dot / (na * nb);
 }
 
-function splitChunks(text, chunkSize = 900, overlap = 150) {
-  const s = String(text || "");
+function chunkText(text, maxChars = 450) {
+  const lines = String(text || "")
+    .split(/\r?\n/)
+    .map(l => l.trim())
+    .filter(l => l.length >= 20);
+
   const chunks = [];
-  let i = 0;
-  while (i < s.length) {
-    const end = Math.min(s.length, i + chunkSize);
-    const piece = s.slice(i, end).trim();
-    if (piece.length > 60) chunks.push(piece);
-    if (end === s.length) break;
-    i = end - overlap;
-    if (i < 0) i = 0;
+  let buf = "";
+
+  for (const line of lines) {
+    if ((buf + " " + line).length > maxChars) {
+      if (buf.trim().length) chunks.push(buf.trim());
+      buf = line;
+    } else {
+      buf = buf ? (buf + " " + line) : line;
+    }
   }
-  return chunks;
+  if (buf.trim().length) chunks.push(buf.trim());
+  return chunks.slice(0, 140);
 }
 
 function guessSection(chunk) {
-  const c = chunk.toLowerCase();
-  if (c.includes("learning outcome") || c.includes("course outcome") || c.includes("co1") || c.includes("co2")) {
-    return "Learning Outcomes";
-  }
-  if (c.includes("assessment") || c.includes("weightage") || c.includes("final examination")) {
-    return "Assessment";
-  }
-  if (c.includes("teaching") || c.includes("learning") || c.includes("lecture") || c.includes("tutorial")) {
-    return "Teaching & Learning";
-  }
-  if (c.includes("synopsis") || c.includes("course summary") || c.includes("course name")) {
-    return "Course Summary";
-  }
+  const c = String(chunk || "").toLowerCase();
+  if (c.includes("course outcome") || c.includes("learning outcome") || c.match(/\bco\d+\b/)) return "Learning Outcomes";
+  if (c.includes("assessment") || c.includes("weightage")) return "Assessment";
+  if (c.includes("synopsis") || c.includes("description")) return "Synopsis";
+  if (c.includes("prerequisite")) return "Prerequisites";
   return "Other";
 }
 
-// -------------------------
-// Evidence builder
-// -------------------------
-export function buildSimilarityEvidence(applicantText, sunwayText) {
-  // 1) overall similarity (full doc)
-  const tfA_full = termFreq(tokenize(applicantText));
-  const tfB_full = termFreq(tokenize(sunwayText));
-  const overall = cosineFromTF(tfA_full, tfB_full); // 0..1
-
-  // 2) chunk-level top matches
-  const aChunks = splitChunks(applicantText);
-  const bChunks = splitChunks(sunwayText);
-
-  // precompute TF for B chunks to reduce work a bit
-  const bTF = bChunks.map((c) => ({
-    text: c,
-    tf: termFreq(tokenize(c)),
-    section: guessSection(c),
-  }));
+export function buildSimilarityEvidence(appText, sunwayText, topK = 10) {
+  const appChunks = chunkText(appText);
+  const sunChunks = chunkText(sunwayText);
+  const sunVecs = sunChunks.map((t) => tfVector(normalizeTokens(t)));
 
   const pairs = [];
 
-  for (const a of aChunks) {
-    const aTF = termFreq(tokenize(a));
-    let best = { score: 0, bText: "", section: "Other" };
+  for (const aChunk of appChunks) {
+    const aVec = tfVector(normalizeTokens(aChunk));
 
-    for (const b of bTF) {
-      const score = cosineFromTF(aTF, b.tf);
-      if (score > best.score) {
-        best = { score, bText: b.text, section: b.section };
+    let bestJ = -1;
+    let bestS = 0;
+
+    for (let j = 0; j < sunChunks.length; j++) {
+      const s = cosineSim(aVec, sunVecs[j]);
+      if (s > bestS) {
+        bestS = s;
+        bestJ = j;
       }
     }
 
-    if (best.score >= 0.18) {
+    if (bestJ >= 0 && bestS > 0.18) {
       pairs.push({
-        score: Number(best.score.toFixed(3)),
-        applicant_excerpt: a,
-        sunway_excerpt: best.bText,
-        section: best.section,
+        score: Number(bestS.toFixed(3)),
+        applicant_excerpt: aChunk,
+        sunway_excerpt: sunChunks[bestJ],
+        section: guessSection(sunChunks[bestJ]),
       });
     }
   }
 
-  // sort and keep top N
   pairs.sort((x, y) => y.score - x.score);
-  const top_pairs = pairs.slice(0, 6);
 
-  // 3) section scores (based on top_pairs only)
-  const sectionMap = new Map();
-  for (const p of top_pairs) {
-    const key = p.section || "Other";
-    if (!sectionMap.has(key)) sectionMap.set(key, []);
-    sectionMap.get(key).push(p.score);
+  // section summary
+  const sectionAgg = {};
+  for (const p of pairs.slice(0, Math.min(40, pairs.length))) {
+    sectionAgg[p.section] = sectionAgg[p.section] || { sum: 0, n: 0 };
+    sectionAgg[p.section].sum += p.score;
+    sectionAgg[p.section].n += 1;
   }
 
-  const section_scores = Array.from(sectionMap.entries()).map(([section, scores]) => {
-    const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
-    return {
+  const section_scores = Object.entries(sectionAgg)
+    .map(([section, v]) => ({
       section,
-      avg_score: Number(avg.toFixed(3)),
-      matches: scores.length,
-    };
-  });
+      avg_score: Number((v.sum / v.n).toFixed(3)),
+      matches: v.n
+    }))
+    .sort((a, b) => b.avg_score - a.avg_score);
 
-  // IMPORTANT: this is the SAME number you should use for “system suggestion similarity”
+  return { top_pairs: pairs.slice(0, topK), section_scores };
+}
+
+/* =========================================================
+   Keep your existing runAiAnalysis stub (unchanged)
+   ========================================================= */
+export async function runAiAnalysis(application, documents) {
+  const similarity = Number(application.ai_score ?? 0.82);
+  const decision = application.ai_decision ?? "Approve";
+  const gradeDetected = application.grade_detected ?? "A-";
+  const creditHours = 3;
+
   return {
-    overall_similarity: Number(overall.toFixed(3)),
-    section_scores,
-    top_pairs,
+    similarity,
+    decision,
+    gradeDetected,
+    creditHours,
+    markDetected: application.mark_detected ?? null,
+    reasoning: {
+      summary: "Stub reasoning (replace with real extraction later).",
+      checks: {
+        similarity: { pass: similarity >= 0.8, detected: similarity, required: ">= 0.80" },
+        grade: { pass: true, detected: gradeDetected, required: ">= C" },
+        credit_hours: { pass: true, detected: creditHours, required: ">= 3" }
+      },
+      docs_used: (documents || []).map(d => ({ id: d.id, file_name: d.file_name }))
+    }
   };
 }
