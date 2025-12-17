@@ -164,26 +164,207 @@ export function buildSimilarityEvidence(appText, sunwayText, topK = 10) {
 /* =========================================================
    Keep your existing runAiAnalysis stub (unchanged)
    ========================================================= */
-export async function runAiAnalysis(application, documents) {
+export async function runAiAnalysis(application, documents, sunwayCourses = []) {
+  // 1) Decide transcript path (MOST IMPORTANT)
+  // Your applications.document_path is the transcript path in your table.
+  const transcriptPath = application.document_path;
+
+  // 2) Decide which applicant course to extract
+  const targetCourseName = application.prev_subject_name || "";
+
+  let applicantGrade = null;
+  let applicantCreditHours = null;
+
+  if (transcriptPath && targetCourseName) {
+    const transcriptText = await extractPdfText(transcriptPath);
+
+    const applicantExtract = await extractApplicantCourseResultWithAI({
+      transcriptText,
+      targetCourseName,
+    });
+
+    applicantGrade = applicantExtract?.grade ?? null;
+    applicantCreditHours = applicantExtract?.credit_hours ?? null;
+  }
+
+  // 3) Sunway credit hours (prefer DB; fallback to AI if missing)
+  let sunwayCreditHours = null;
+
+  if (sunwayCourses.length) {
+    const nums = sunwayCourses
+      .map(c => Number(c.credit_hours))
+      .filter(n => Number.isFinite(n));
+
+    // If multiple requested subjects, use the MAX as benchmark
+    if (nums.length) sunwayCreditHours = Math.max(...nums);
+  }
+
+  if (sunwayCreditHours == null && sunwayCourses.length) {
+    // fallback: AI extract from syllabus PDF text (slower)
+    for (const c of sunwayCourses) {
+      if (!c?.syllabus_pdf_path) continue;
+
+      // syllabus_pdf_path is like "/uploads/sunway/ETC1023.pdf"
+      // convert to absolute path on disk
+      const abs = path.join(process.cwd(), "backend", c.syllabus_pdf_path.replace(/^\/+/, ""));
+      try {
+        const syllabusText = await extractPdfText(abs);
+        const swExtract = await extractSunwayCreditHoursWithAI({ syllabusText });
+        const n = Number(swExtract?.credit_hours);
+        if (Number.isFinite(n)) {
+          sunwayCreditHours = Math.max(sunwayCreditHours ?? 0, n);
+        }
+      } catch {
+        // ignore per-course failures
+      }
+    }
+  }
+
+  // 4) Similarity (keep your existing)
   const similarity = Number(application.ai_score ?? 0.82);
   const decision = application.ai_decision ?? "Approve";
-  const gradeDetected = application.grade_detected ?? "A-";
-  const creditHours = 3;
+
+  // 5) Checks (adjust as you like)
+  const checks = {
+    similarity: { pass: similarity >= 0.8, detected: similarity, required: ">= 0.80" },
+    grade: { pass: !!applicantGrade, detected: applicantGrade, required: "Extracted from transcript" },
+    credit_hours: { pass: applicantCreditHours != null, detected: applicantCreditHours, required: "Extracted from transcript" },
+    sunway_credit_hours: { pass: sunwayCreditHours != null, detected: sunwayCreditHours, required: "From DB (or AI fallback)" }
+  };
 
   return {
     similarity,
     decision,
-    gradeDetected,
-    creditHours,
+    gradeDetected: applicantGrade,
+    creditHours: applicantCreditHours,
     markDetected: application.mark_detected ?? null,
     reasoning: {
-      summary: "Stub reasoning (replace with real extraction later).",
-      checks: {
-        similarity: { pass: similarity >= 0.8, detected: similarity, required: ">= 0.80" },
-        grade: { pass: true, detected: gradeDetected, required: ">= C" },
-        credit_hours: { pass: true, detected: creditHours, required: ">= 3" }
-      },
-      docs_used: (documents || []).map(d => ({ id: d.id, file_name: d.file_name }))
+      summary: "Grade & credit hours extracted from transcript using Gemini JSON extraction.",
+      checks,
+      target_course: targetCourseName,
+      transcript_used: transcriptPath,
+      requested_sunway: (sunwayCourses || []).map(s => ({
+        subject_code: s.subject_code,
+        subject_name: s.subject_name,
+        credit_hours: s.credit_hours,
+      })),
+      docs_used: (documents || []).map(d => ({ id: d.id, file_name: d.file_name })),
     }
   };
+}
+
+
+// ---- Gemini JSON helper (FREE tier friendly) ----
+export async function callGeminiJSON({ prompt, jsonSchema }) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error("Missing GEMINI_API_KEY in backend/.env");
+
+  const endpoint =
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+
+  const body = {
+    contents: [
+      {
+        role: "user",
+        parts: [{ text: prompt }],
+      },
+    ],
+    generationConfig: {
+      temperature: 0.1,
+      responseMimeType: "application/json",
+    },
+  };
+
+  // If you want to enforce structure, embed schema into prompt (Gemini JSON mode helps, but still be defensive)
+  const res = await fetch(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data?.error?.message || "Gemini API error");
+  }
+
+  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) throw new Error("Gemini returned empty response");
+
+  // Defensive parse
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error("Gemini did not return valid JSON");
+  }
+
+  return parsed;
+}
+
+export async function extractApplicantCourseResultWithAI({ transcriptText, targetCourseName }) {
+  const trimmed = transcriptText.slice(0, 35000); // keep token cost small
+
+  const prompt = `
+You are extracting structured data from a university transcript.
+
+Task:
+Find the course in the transcript that best matches the target course name:
+TARGET_COURSE_NAME: "${targetCourseName}"
+
+Return the student's achieved GRADE and the CREDIT_HOURS (or "Credit", "Credit Value", etc.) for that matched course.
+
+Rules:
+- You MUST extract grade and credit_hours from the SAME row/entry as the matched course.
+- If the transcript has multiple similar names, choose the one whose course name is the closest match to TARGET_COURSE_NAME.
+- Do NOT guess. If credit hours is not present on the same row/entry, return null.
+- Grade must be exactly as written (e.g., "C", "C+", "A-", "B").
+
+Transcript text:
+---
+${trimmed}
+---
+
+Return ONLY JSON in this format:
+{
+  "match_found": boolean,
+  "matched_course_name": string|null,
+  "matched_course_code": string|null,
+  "grade": string|null,
+  "credit_hours": number|null,
+  "confidence": number
+}
+`;
+
+  return callGeminiJSON({ prompt });
+}
+
+
+export async function extractSunwayCreditHoursWithAI({ syllabusText }) {
+  const trimmed = syllabusText.slice(0, 25000);
+
+  const prompt = `
+You are extracting structured data from a Sunway course syllabus PDF text.
+
+Task:
+Extract the course credit hours value.
+
+Look for fields like:
+- "Credit Hours"
+- "SLT Credit Hours"
+- "Credit Hour(s)"
+- "Credit"
+
+Return ONLY JSON:
+{
+  "credit_hours": number|null,
+  "confidence": number
+}
+
+Syllabus text:
+---
+${trimmed}
+---
+`;
+
+  return callGeminiJSON({ prompt });
 }

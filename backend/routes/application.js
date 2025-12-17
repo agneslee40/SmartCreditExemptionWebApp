@@ -3,8 +3,10 @@ import pool from "../config/db.js";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-import { extractPdfText, buildSimilarityEvidence } from "../services/aiService.js";
+import { extractPdfText, extractApplicantCourseResultWithAI, extractSunwayCreditHoursWithAI, buildSimilarityEvidence } from "../services/aiService.js";
 import { fileURLToPath } from "url";
+
+
 
 const router = express.Router();
 
@@ -57,7 +59,19 @@ async function runAndPersistAi(appId) {
   );
   const documents = docsR.rows;
 
-  const ai = await runAiAnalysis(application, documents);
+  
+  const codes = parseCodes(application.requested_subject_code);
+
+  const sunwayR = await pool.query(
+    `SELECT subject_code, subject_name, credit_hours, syllabus_pdf_path
+     FROM sunway_courses
+     WHERE subject_code = ANY($1::text[])`,
+    [codes]
+  );
+
+  const sunwayCourses = sunwayR.rows;
+
+  const ai = await runAiAnalysis(application, documents, sunwayCourses);
 
   const insertR = await pool.query(
     `INSERT INTO ai_analysis (application_id, similarity, grade_detected, credit_hours, decision, reasoning)
@@ -454,7 +468,9 @@ router.post("/:id/ai-analysis/run", async (req, res) => {
     console.error("POST /applications/:id/ai-analysis/run error:", err);
     res.status(500).json({ error: "Failed to run AI analysis", details: err.message });
   }
+  
 });
+
 
 /* =========================================================
    7) POST /api/applications (create application)
