@@ -133,9 +133,10 @@ export default function ApplicationReview() {
 
   async function acceptAi() {
     try {
-      await api.post(`/applications/${id}/accept-ai`, {
+      await api.post(`/applications/${id}/override`, {
+        accept_ai: true
         // optional: record which syllabus they were viewing
-        sunway_subject_code: selectedSunwayCode
+        //sunway_subject_code: selectedSunwayCode
       });
       alert("AI recommendation accepted ✅");
       const res = await api.get(`/applications/${id}/review`);
@@ -290,12 +291,7 @@ export default function ApplicationReview() {
                 <div><b>Grade:</b> {ai.grade_detected || "-"}</div>
                 <div><b>Credit Hours:</b> {ai.credit_hours ?? "-"}</div>
 
-                <div style={{ marginTop: 10 }}>
-                  <div style={{ fontWeight: 800, marginBottom: 6 }}>Checks</div>
-                  <pre style={preStyle}>
-                    {JSON.stringify(ai.reasoning?.checks, null, 2)}
-                  </pre>
-                </div>
+              
               </div>
             )}
           </div>

@@ -183,13 +183,6 @@ export async function runAiAnalysis(application, documents, sunwayCourses = []) 
       targetCourseName,
     });
 
-    console.log("=== DEBUG A003 applicantExtract ===");
-    console.log("targetCourseName:", targetCourseName);
-    console.log("appId:", application?.id, "application_id:", application?.application_id);
-    console.log(JSON.stringify(applicantExtract, null, 2));
-    console.log("=== END DEBUG ===");
-
-
     applicantGrade = applicantExtract?.grade ?? null;
     applicantCreditHours = applicantExtract?.credit_hours ?? null;
   }
