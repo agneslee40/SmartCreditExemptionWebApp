@@ -57,7 +57,15 @@ async function runAndPersistAi(appId) {
   );
   const documents = docsR.rows;
 
-  const ai = await runAiAnalysis(application, documents);
+  // Fetch Sunway courses for requested codes
+  const codes = parseCodes(application.requested_subject_code);
+  const sunwayR = await pool.query(
+    "SELECT subject_code, subject_name, credit_hours, syllabus_pdf_path FROM sunway_courses WHERE subject_code = ANY($1::text[])",
+    [codes]
+  );
+  const sunwayCourses = sunwayR.rows;
+
+  const ai = await runAiAnalysis(application, documents, { sunwayCourses });
 
   const insertR = await pool.query(
     `INSERT INTO ai_analysis (application_id, similarity, grade_detected, credit_hours, decision, reasoning)
@@ -169,54 +177,72 @@ router.get("/:id/evidence", async (req, res) => {
   }
 });
 
-/* =========================================================
-   0) GET /api/applications/:id/review
-   IMPORTANT: NO pdf parsing here.
-   The review page should consume:
-   - applicant docs (URLs)
-   - sunway courses (URLs)
-   - latest ai_analysis row (reasoning JSON)
-   ========================================================= */
+// helper: convert file_path -> public URL
+function toPublicUrl(filePath) {
+  if (!filePath) return null;
+
+  // normalize windows slashes
+  const norm = String(filePath).replace(/\\/g, "/");
+
+  // if path contains "/uploads/", expose via your static route
+  const idx = norm.toLowerCase().lastIndexOf("/uploads/");
+  if (idx !== -1) {
+    const rel = norm.slice(idx + "/uploads".length); // keeps leading "/..."
+    return `${process.env.BACKEND_BASE_URL || "http://localhost:5000"}/uploads${rel}`;
+  }
+
+  // fallback: if already a URL
+  if (norm.startsWith("http://") || norm.startsWith("https://")) return norm;
+
+  return null;
+}
+
+/**
+ * GET /api/applications/:id/review
+ * Returns: application, applicant_documents, sunway_courses, latest ai_analysis (if any)
+ */
 router.get("/:id/review", async (req, res) => {
   try {
     const appId = Number(req.params.id);
-    if (!Number.isFinite(appId)) return res.status(400).json({ error: "Invalid application id" });
+    if (!Number.isFinite(appId)) {
+      return res.status(400).json({ error: "Invalid application id" });
+    }
 
     // 1) application
     const appR = await pool.query("SELECT * FROM applications WHERE id=$1", [appId]);
     const application = appR.rows[0];
     if (!application) return res.status(404).json({ error: "Application not found" });
 
-    // 2) applicant documents (+ URL for react-pdf)
-    const docsR = await pool.query(
+    // 2) applicant documents
+    const docsRes = await pool.query(
       "SELECT * FROM documents WHERE application_id=$1 ORDER BY uploaded_at ASC",
       [appId]
     );
 
-    const applicant_documents = docsR.rows.map((d) => {
-      // Your DB stores absolute Windows path like C:\...\backend\uploads\123_file.pdf
+    const applicant_documents = docsRes.rows.map((d) => {
       const filename = String(d.file_path || "").split(/[/\\]/).pop();
       return {
         ...d,
-        // direct static URL (because you have app.use("/uploads", express.static(...)))
         file_url: filename ? `http://localhost:5000/uploads/${filename}` : null,
       };
     });
 
-    // 3) Sunway courses (fixed backend library)
+    // 3) Sunway courses
     const codes = parseCodes(application.requested_subject_code);
-    const sunwayR = await pool.query(
+    const sunwayRes = await pool.query(
       "SELECT * FROM sunway_courses WHERE subject_code = ANY($1::text[]) ORDER BY subject_code",
       [codes]
     );
 
-    const sunway_courses = sunwayR.rows.map((c) => ({
+    const sunway_courses = sunwayRes.rows.map((c) => ({
       ...c,
-      syllabus_url: c.syllabus_pdf_path ? `http://localhost:5000${c.syllabus_pdf_path}` : null,
+      syllabus_url: c.syllabus_pdf_path
+        ? `http://localhost:5000${c.syllabus_pdf_path}`
+        : null,
     }));
 
-    // 4) Latest AI analysis row (if exists)
-    const aiR = await pool.query(
+    // 4) Latest AI analysis
+    const aiRes = await pool.query(
       `SELECT *
        FROM ai_analysis
        WHERE application_id = $1
@@ -224,9 +250,8 @@ router.get("/:id/review", async (req, res) => {
        LIMIT 1`,
       [appId]
     );
-    const ai_analysis = aiR.rows[0] || null;
+    const ai_analysis = aiRes.rows[0] || null;
 
-    // 5) Return review payload
     return res.json({
       application,
       applicant_documents,
@@ -235,9 +260,19 @@ router.get("/:id/review", async (req, res) => {
     });
   } catch (err) {
     console.error("GET /applications/:id/review error:", err);
-    return res.status(500).json({ error: "Failed to build review payload", details: err.message });
+    return res.status(500).json({
+      error: "Failed to build review payload",
+      details: err.message,
+    });
   }
 });
+
+
+function pathBasename(p) {
+  if (!p) return "";
+  return p.split("\\").pop().split("/").pop();
+}
+
 
 /* =========================================================
    1) GET /api/applications
@@ -440,19 +475,119 @@ router.get("/:id/ai-analysis/latest", async (req, res) => {
   }
 });
 
-/* =========================================================
-   6) POST run AI (manual regenerate)
-   ========================================================= */
-router.post("/:id/ai-analysis/run", async (req, res) => {
-  try {
-    const appId = Number(req.params.id);
-    if (!Number.isFinite(appId)) return res.status(400).json({ error: "Invalid application id" });
+// POST /api/applications/:id/run-ai
+// Body optional: { docId, sunwayCode }
+// - If not provided, auto-picks first applicant doc + first requested Sunway code.
+router.post("/:id/run-ai", async (req, res) => {
+  const appId = Number(req.params.id);
 
-    const row = await runAndPersistAi(appId);
-    res.json({ message: "AI analysis generated", analysis: row });
-  } catch (err) {
-    console.error("POST /applications/:id/ai-analysis/run error:", err);
-    res.status(500).json({ error: "Failed to run AI analysis", details: err.message });
+  try {
+    // 1) Application
+    const appR = await pool.query("SELECT * FROM applications WHERE id=$1", [appId]);
+    if (appR.rows.length === 0) return res.status(404).json({ error: "Application not found" });
+    const application = appR.rows[0];
+
+    // 2) Applicant docs (documents table)
+    const docsR = await pool.query(
+      `SELECT id, file_name, file_path, uploaded_at
+       FROM documents
+       WHERE application_id=$1
+       ORDER BY uploaded_at ASC, id ASC`,
+      [appId]
+    );
+    if (docsR.rows.length === 0) {
+      return res.status(400).json({ error: "No applicant documents found for this application" });
+    }
+
+    // 3) Sunway courses (from requested_subject_code)
+    const codes = parseCodes(application.requested_subject_code);
+    if (codes.length === 0) {
+      return res.status(400).json({ error: "Application missing requested_subject_code" });
+    }
+
+    const sunwayR = await pool.query(
+      `SELECT subject_code, subject_name, credit_hours, syllabus_pdf_path
+       FROM sunway_courses
+       WHERE subject_code = ANY($1::text[])
+       ORDER BY subject_code ASC`,
+      [codes]
+    );
+    if (sunwayR.rows.length === 0) {
+      return res.status(400).json({ error: "No matching Sunway courses found for requested_subject_code" });
+    }
+
+    // 4) Choose mapping (docId + sunwayCode) OR defaults
+    const bodyDocId = req.body?.docId ? Number(req.body.docId) : null;
+    const bodySunwayCode = req.body?.sunwayCode ? String(req.body.sunwayCode).trim() : null;
+
+    const chosenDoc = bodyDocId
+      ? docsR.rows.find((d) => d.id === bodyDocId)
+      : docsR.rows[0];
+
+    if (!chosenDoc) {
+      return res.status(400).json({ error: "Invalid docId for this application" });
+    }
+
+    const chosenSunway = bodySunwayCode
+      ? sunwayR.rows.find((s) => s.subject_code === bodySunwayCode)
+      : sunwayR.rows[0];
+
+    if (!chosenSunway) {
+      return res.status(400).json({ error: "Invalid sunwayCode for this application" });
+    }
+
+    if (!chosenSunway.syllabus_pdf_path) {
+      return res.status(400).json({ error: "Sunway course missing syllabus_pdf_path" });
+    }
+
+    // 5) Extract text + build evidence (SAME logic for similarity + evidence)
+    const sunAbs = webPathToAbs(chosenSunway.syllabus_pdf_path);
+
+    const [appText, sunText] = await Promise.all([
+      extractPdfText(chosenDoc.file_path),
+      extractPdfText(sunAbs),
+    ]);
+
+    const evidence = buildSimilarityEvidence(appText, sunText);
+
+    const similarity = evidence.overall_similarity; // 0..1
+
+    // 6) Decide (simple rule for now; you can refine later)
+    const decision = similarity >= 0.8 ? "Approve" : "Reject";
+
+    const reasoning = {
+      summary:
+        "Similarity is computed from extracted PDF text using TF cosine. Evidence shows top matching excerpt pairs.",
+      mapping: {
+        applicant_doc_id: chosenDoc.id,
+        applicant_doc_name: chosenDoc.file_name,
+        sunway_subject_code: chosenSunway.subject_code,
+        sunway_subject_name: chosenSunway.subject_name,
+      },
+      evidence,
+    };
+
+    // 7) Save ai_analysis row
+    const ins = await pool.query(
+      `INSERT INTO ai_analysis (application_id, similarity, decision, reasoning, analyzed_at)
+       VALUES ($1, $2, $3, $4, NOW())
+       RETURNING *`,
+      [appId, similarity, decision, reasoning]
+    );
+
+    // 8) Optional snapshot on applications table (so tasks list can display)
+    await pool.query(
+      `UPDATE applications
+       SET ai_score = $1,
+           ai_decision = $2
+       WHERE id = $3`,
+      [similarity, decision, appId]
+    );
+
+    return res.json(ins.rows[0]);
+  } catch (e) {
+    console.error("POST /applications/:id/run-ai error:", e);
+    return res.status(500).json({ error: "Failed to run AI analysis", details: e.message });
   }
 });
 
@@ -864,62 +999,5 @@ router.post("/:id/override", async (req, res) => {
 
 
 
-/**
- * GET /api/applications/:id/similarity-evidence?docId=12&sunwayCode=ETC1023
- * Returns top matching text chunks as "evidence" (no PDF highlighting needed yet).
- */
-router.get("/:id/similarity-evidence", async (req, res) => {
-  try {
-    const appId = Number(req.params.id);
-    const docId = Number(req.query.docId);
-    const sunwayCode = String(req.query.sunwayCode || "").trim();
-
-    if (!Number.isFinite(appId)) return res.status(400).json({ error: "Invalid application id" });
-    if (!Number.isFinite(docId)) return res.status(400).json({ error: "Invalid docId" });
-    if (!sunwayCode) return res.status(400).json({ error: "Missing sunwayCode" });
-
-    // 1) get applicant doc path
-    const docR = await pool.query(
-      "SELECT * FROM documents WHERE id=$1 AND application_id=$2",
-      [docId, appId]
-    );
-    const doc = docR.rows[0];
-    if (!doc) return res.status(404).json({ error: "Applicant document not found" });
-
-    // 2) get sunway syllabus path
-    const swR = await pool.query(
-      "SELECT * FROM sunway_courses WHERE subject_code=$1",
-      [sunwayCode]
-    );
-    const sw = swR.rows[0];
-    if (!sw) return res.status(404).json({ error: "Sunway course not found" });
-    if (!sw.syllabus_pdf_path) return res.status(400).json({ error: "Sunway syllabus_pdf_path missing" });
-
-    // doc.file_path = absolute windows path
-    const applicantPath = doc.file_path;
-
-    // sw.syllabus_pdf_path = "/uploads/sunway/ETC1023.pdf"
-    const swFilename = String(sw.syllabus_pdf_path).split("/").pop();
-    const sunwayPath = path.join(process.cwd(), "backend", "uploads", "sunway", swFilename);
-
-    // 3) extract text
-    const [appText, sunText] = await Promise.all([
-      extractPdfText(applicantPath),
-      extractPdfText(sunwayPath),
-    ]);
-
-    // 4) build evidence
-    const evidence = buildSimilarityEvidence(appText, sunText, 10);
-
-    return res.json({
-      applicant_doc: { id: doc.id, file_name: doc.file_name },
-      sunway_course: { subject_code: sw.subject_code, subject_name: sw.subject_name },
-      evidence
-    });
-  } catch (err) {
-    console.error("GET /applications/:id/similarity-evidence error:", err);
-    return res.status(500).json({ error: "Failed to generate similarity evidence", details: err.message });
-  }
-});
 
 export default router;
