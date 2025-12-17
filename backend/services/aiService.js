@@ -171,6 +171,90 @@ export function similarityFromEvidence(evidence) {
   return Math.max(0, Math.min(1, best));
 }
 
+async function geminiSimilarityScore({ applicantText, sunwayText }) {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) throw new Error("Missing GEMINI_API_KEY");
+
+  const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+
+  // keep prompts short-ish to reduce cost/latency
+  const a = applicantText.slice(0, 12000);
+  const s = sunwayText.slice(0, 12000);
+
+  const url =
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
+
+  const prompt = `
+You are evaluating course-to-course similarity for credit exemption/transfer.
+
+Return STRICT JSON ONLY:
+{
+  "similarity": <number between 0 and 1>
+}
+
+Rules:
+- similarity is semantic similarity between course content (topics + outcomes), not formatting.
+- ignore headers/footers/tables of administrative info.
+- output JSON only.
+
+APPLICANT COURSE TEXT:
+${a}
+
+SUNWAY COURSE TEXT:
+${s}
+`.trim();
+
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.1 }
+    }),
+  });
+
+  if (!resp.ok) {
+    const t = await resp.text();
+    throw new Error(`Gemini HTTP ${resp.status}: ${t}`);
+  }
+
+  const data = await resp.json();
+  const text =
+    data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+
+  // parse JSON safely
+  let obj;
+  try {
+    obj = JSON.parse(text);
+  } catch {
+    // sometimes model wraps JSON; try extracting first {...}
+    const m = text.match(/\{[\s\S]*\}/);
+    if (!m) throw new Error("Gemini returned non-JSON");
+    obj = JSON.parse(m[0]);
+  }
+
+  const sim = Number(obj?.similarity);
+  if (!Number.isFinite(sim)) throw new Error("Gemini similarity is not a number");
+  return Math.max(0, Math.min(1, sim));
+}
+
+export async function hybridSimilarity({ applicantText, sunwayText }) {
+  const aLen = (applicantText || "").length;
+  const sLen = (sunwayText || "").length;
+
+  // If either side is too short, TF cosine becomes nonsense → fallback to Gemini
+  const POOR_TEXT = aLen < 1000 || sLen < 1000;
+
+  if (!POOR_TEXT) {
+    const tf = tfCosineSimilarity(applicantText, sunwayText);
+    return { score: tf, method: "tf_cosine" };
+  }
+
+  const gem = await geminiSimilarityScore({ applicantText, sunwayText });
+  return { score: gem, method: "gemini_fallback" };
+}
+
+
 
 /* =========================================================
    Keep your existing runAiAnalysis stub (unchanged)
@@ -179,7 +263,8 @@ export async function runAiAnalysis(application, documents, sunwayCourses = []) 
   // 1) Decide transcript path (MOST IMPORTANT)
   // Your applications.document_path is the transcript path in your table.
   const transcriptPath = application.document_path;
-
+  const reasoning = {};
+  const similarity = 0;
   // 2) Decide which applicant course to extract
   const targetCourseName = application.prev_subject_name || "";
 
@@ -234,30 +319,54 @@ export async function runAiAnalysis(application, documents, sunwayCourses = []) 
   // 4) Similarity (keep your existing)
   // Extract text for ALL applicant docs (or at least syllabus-like ones)
   // pick a single "best applicant doc" first (simple heuristic)
-  const applicantBest =
-    documents.find(d => /syllabus|module|course/i.test(d.file_name)) || documents[0];
+  // 1) pick applicant content doc for similarity (NOT transcript)
+  const nonTranscriptDocs = (documents || []).filter(d =>
+    !/transcript|result|academic\s*record/i.test(d.file_name || "")
+  );
 
-  const applicantText = await extractPdfText(applicantBest.file_path);
+  // Prefer doc whose file name matches prev_subject_name
+  const targetName = String(application?.prev_subject_name || "").toLowerCase();
+  let applicantContentDoc =
+    nonTranscriptDocs.find(d => (d.file_name || "").toLowerCase().includes(targetName))
+    || nonTranscriptDocs[0]
+    || documents?.[0];
 
-  // 2) Compute similarity per requested Sunway course, then aggregate
+  const applicantContentText = applicantContentDoc
+    ? await extractPdfText(applicantContentDoc.file_path)
+    : "";
+
+  // 2) compare against EACH requested sunway syllabus
   const perCourse = [];
-  for (const c of sunwayCourses) {
-    const sunwayText = await extractPdfText(path.join(process.cwd(), "backend", c.syllabus_pdf_path));
-    const evidence = buildSimilarityEvidence(applicantText, sunwayText);
+  for (const c of (sunwayCourses || [])) {
+    const sunAbs = c.syllabus_abs_path; // <- provided by application.js
+    const sunText = sunAbs ? await extractPdfText(sunAbs) : "";
+
+    const { score, method } = await hybridSimilarity({
+      applicantText: applicantContentText,
+      sunwayText: sunText
+    });
 
     perCourse.push({
       subject_code: c.subject_code,
       subject_name: c.subject_name,
-      evidence,
-      score: similarityFromEvidence(evidence),
+      score,
+      method,
+      applicant_doc_used: { id: applicantContentDoc?.id, file_name: applicantContentDoc?.file_name }
     });
   }
 
-  // aggregate: average (or max) across requested subjects
-  const similarity =
-    perCourse.length
-      ? perCourse.reduce((a, x) => a + x.score, 0) / perCourse.length
-      : 0;
+  // 3) overall similarity (for multi requested subjects)
+  // For credit exemption: safest is MIN (all must pass)
+  const similarityOverall =
+    perCourse.length ? Math.min(...perCourse.map(x => x.score)) : 0;
+
+  // Store details so UI can show “how similarity came”
+  reasoning.similarity = {
+    overall: similarityOverall,
+    per_course: perCourse
+  };
+
+// keep your existing checks but use similarityOverall instead of hardcode
 
     
   const decision = application.ai_decision ?? "Reject";
