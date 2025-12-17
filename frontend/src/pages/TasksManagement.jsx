@@ -275,14 +275,13 @@ export default function TasksManagement() {
 
             // “team” pill: simple prototype
             team: {
-              name: "Computer Science", // keep static for now
+              name: "Engineering",
               members: [
-                { name: "Programme Leader", email: "pl@sunway.edu.my", avatar: "https://i.pravatar.cc/100?img=32" },
-                ...(r.sl_email
-                  ? [{ name: r.sl_name || "Subject Lecturer", email: r.sl_email, avatar: "https://i.pravatar.cc/100?img=22" }]
-                  : []),
+                { name: "PL Demo", email: "pl@sunway.edu.my", avatar: "https://i.pravatar.cc/100?img=1" },
+                { name: "SL Demo", email: "sl@sunway.edu.my", avatar: "https://i.pravatar.cc/100?img=2" },
               ],
             },
+
           };
         });
 
@@ -558,7 +557,7 @@ export default function TasksManagement() {
                             {/* Team pill (clickable) */}
                             <button
                               onClick={() => openTeamModal(a.id)}
-                              className="flex items-center gap-4 rounded-full bg-[#EFEFEF] px-5 py-3 text-sm font-semibold text-[#0B0F2A] hover:bg-[#E7E7E7]"
+                              className="inline-flex items-center gap-2 rounded-full bg-[#0B0F2A] px-6 py-3 text-sm font-semibold text-white hover:opacity-90"
                               title="View team details"
                             >
                               <span>Team: {a.team.name}</span>
@@ -575,18 +574,16 @@ export default function TasksManagement() {
                                 ))}
                               </div>
 
-                              {/* plus (quick add SL) */}
-                              <span className="ml-1 inline-flex h-7 w-7 items-center justify-center rounded-full bg-white text-[#0B0F2A] shadow">
-                                <IconPlus className="h-4 w-4" />
-                              </span>
+                              
                             </button>
 
-                            <div className="flex-1" />
+                            
 
                             {/* View details */}
                             <button
                               onClick={() => navigate(`/tasks/applications/${a.dbId}`)}
-                              className="rounded-full bg-[#EFEFEF] px-8 py-3 text-sm font-semibold text-[#0B0F2A] hover:bg-[#E7E7E7]"
+                              className="rounded-full bg-[#0B0F2A] px-8 py-3 text-sm font-semibold text-white hover:opacity-90"
+
                             >
                               View Details
                             </button>
@@ -594,7 +591,8 @@ export default function TasksManagement() {
                             {/* Review */}
                             <button
                               onClick={() => navigate(`/tasks/applications/${a.dbId}/review`)}
-                              className="rounded-full bg-[#EFEFEF] px-8 py-3 text-sm font-semibold text-[#0B0F2A] hover:bg-[#E7E7E7]"
+                              className="rounded-full bg-[#0B0F2A] px-8 py-3 text-sm font-semibold text-white hover:opacity-90"
+
                             >
                               Review
                             </button>

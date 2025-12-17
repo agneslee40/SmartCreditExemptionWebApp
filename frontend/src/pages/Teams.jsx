@@ -362,7 +362,11 @@ export default function Teams() {
   const [removePickedEmail, setRemovePickedEmail] = useState("");
 
   const [search, setSearch] = useState("");
-  const [selectedId, setSelectedId] = useState("t-cs");
+  const [selectedId, setSelectedId] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("team") || "t-eng";
+  });
+
 
   const recalcCounts = (team) => ({
     ...team,
