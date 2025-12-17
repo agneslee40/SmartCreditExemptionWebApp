@@ -515,7 +515,7 @@ const pdfTitle = {
 
 const pdfBody = {
   height: "calc(100vh - 210px)", // keeps PDFs visible without horizontal scroll
-  overflow: "hidden"
+  overflow: "auto"
 };
 
 const pillStyle = {
