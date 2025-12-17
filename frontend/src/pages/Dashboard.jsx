@@ -31,16 +31,17 @@ Thank you.
 function SectionCard({ title, countBadge, rows, getActionLabel, onActionClick, showTip }) {
   return (
     <section className="mt-10">
-      <div className="flex items-center gap-6 mb-6">
-        <div className="w-20 h-20 rounded-full bg-[#FF6B2C] text-[#0B0F2A] flex items-center justify-center text-4xl font-bold shadow-md">
-          {countBadge}
-        </div>
-        <h2 className="text-4xl font-extrabold tracking-tight text-[#050827]">
-          {title}
-        </h2>
-      </div>
+      
 
-      <div className="mt-4 rounded-[32px] bg-[#EFEFEF] px-6 py-5">
+      <div className="relative mt-4 rounded-[32px] bg-[#EFEFEF] px-6 py-5">
+        <div className="flex items-center gap-6 mb-6">
+          <div className="w-20 h-20 rounded-full bg-[#FF6B2C] text-[#0B0F2A] flex items-center justify-center text-4xl font-bold shadow-md">
+            {countBadge}
+          </div>
+          <h2 className="text-4xl font-extrabold tracking-tight text-[#050827]">
+            {title}
+          </h2>
+        </div>
         <div className="overflow-x-auto">
           <table className="min-w-[1100px] w-full text-sm text-left">
             <thead className="text-gray-500 border-b">
