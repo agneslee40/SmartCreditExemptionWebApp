@@ -632,4 +632,106 @@ router.patch("/:id", async (req, res) => {
   }
 });
 
+// POST /api/applications/:id/override
+router.post("/:id/override", async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const appId = Number(req.params.id);
+
+    const {
+      final_similarity,          // 0.82 (NOT 82)
+      final_grade,               // "A-"
+      final_credit_hours,        // 3
+      final_equivalent_grade,    // optional
+      override_reason,           // required
+      final_decision,            // "Approve" / "Reject"
+      sunway_subject_code        // optional
+    } = req.body;
+
+    // TODO later: replace this with req.user.id from JWT middleware
+    const overriddenBy = req.body.overridden_by ?? null;
+
+    if (!override_reason || !String(override_reason).trim()) {
+      return res.status(400).json({ error: "override_reason is required" });
+    }
+
+    await client.query("BEGIN");
+
+    // 1) fetch old values (for version_history)
+    const oldR = await client.query(
+      `SELECT final_similarity, final_grade, final_credit_hours, final_equivalent_grade, final_decision
+       FROM applications WHERE id = $1`,
+      [appId]
+    );
+
+    if (oldR.rowCount === 0) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "Application not found" });
+    }
+
+    const old = oldR.rows[0];
+
+    // 2) update applications
+    const upd = await client.query(
+      `UPDATE applications
+       SET final_similarity = $1,
+           final_grade = $2,
+           final_credit_hours = $3,
+           final_equivalent_grade = $4,
+           final_decision = $5,
+           override_reason = $6,
+           overridden_by = $7,
+           overridden_at = NOW()
+       WHERE id = $8
+       RETURNING *`,
+      [
+        final_similarity ?? null,
+        final_grade ?? null,
+        final_credit_hours ?? null,
+        final_equivalent_grade ?? null,
+        final_decision ?? null,
+        override_reason,
+        overriddenBy,
+        appId
+      ]
+    );
+
+    const updated = upd.rows[0];
+
+    // 3) version history (log only changed fields)
+    const changes = [
+      ["final_similarity", old.final_similarity, updated.final_similarity],
+      ["final_grade", old.final_grade, updated.final_grade],
+      ["final_credit_hours", old.final_credit_hours, updated.final_credit_hours],
+      ["final_equivalent_grade", old.final_equivalent_grade, updated.final_equivalent_grade],
+      ["final_decision", old.final_decision, updated.final_decision],
+    ].filter(([_, a, b]) => String(a ?? "") !== String(b ?? ""));
+
+    for (const [field, oldValue, newValue] of changes) {
+      await client.query(
+        `INSERT INTO version_history (application_id, user_id, field_changed, old_value, new_value)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [appId, overriddenBy, field, oldValue ?? null, newValue ?? null]
+      );
+    }
+
+    await client.query("COMMIT");
+
+    return res.json({
+      ok: true,
+      application: updated,
+      logged_changes: changes.map(([field]) => field),
+      sunway_subject_code: sunway_subject_code ?? null
+    });
+  } catch (e) {
+    await client.query("ROLLBACK");
+    console.error(e);
+    return res.status(500).json({ error: "Failed to save override" });
+  } finally {
+    client.release();
+  }
+});
+
+
+
 export default router;
