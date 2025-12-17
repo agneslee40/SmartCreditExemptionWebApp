@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/client";
 import PdfViewer from "../components/PdfViewer";
 
@@ -18,6 +18,13 @@ function gradeAtLeastC(g) {
 
 export default function ApplicationReview() {
   const { id } = useParams();
+  const navigate = useNavigate();
+
+  const goBack = () => {
+    if (window.history.length > 1) navigate(-1);
+    else navigate("/tasks"); // fallback
+  };
+
 
   const [loading, setLoading] = useState(true);
   const [payload, setPayload] = useState(null);
@@ -181,10 +188,38 @@ export default function ApplicationReview() {
   return (
     <div style={{ padding: 28 }}>
       <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16 }}>
-        <div>
-          <div style={{ fontSize: 28, fontWeight: 800, marginBottom: 4 }}>Application Review</div>
-          <div style={{ color: "#666", fontSize: 13 }}>
-            {application ? `Case: ${application.application_id} • ${application.type}` : "Loading case…"}
+        <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+          <button
+            onClick={goBack}
+            style={{
+              padding: "8px 12px",
+              borderRadius: 10,
+              border: "1px solid #ddd",
+              background: "#fff",
+              fontWeight: 800,
+              cursor: "pointer"
+            }}
+            title="Go back"
+          >
+            ← Back
+          </button>
+
+          <div>
+            <div style={{ fontSize: 28, fontWeight: 800, marginBottom: 4 }}>Application Review</div>
+            <div style={{ color: "#666", fontSize: 13 }}>
+              {application ? `Case: ${application.application_id} • ${application.type}` : "Loading case…"}
+              {application && (
+                <div style={{ marginTop: 6, color: "#666", fontSize: 13, lineHeight: 1.4 }}>
+                  <div>
+                    <b>Requested Subject:</b> {application.requested_subject || "-"}
+                    {application.requested_subject_code ? ` (${application.requested_subject_code})` : ""}
+                  </div>
+                  <div>
+                    <b>Previously Taken Subject:</b> {application.prev_subject_name || "-"}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
