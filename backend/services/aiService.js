@@ -179,9 +179,16 @@ export async function runAiAnalysis(application, documents, sunwayCourses = []) 
     const transcriptText = await extractPdfText(transcriptPath);
 
     const applicantExtract = await extractApplicantCourseResultWithAI({
-      transcriptText,
+          transcriptText,
       targetCourseName,
     });
+
+    console.log("=== DEBUG A003 applicantExtract ===");
+    console.log("targetCourseName:", targetCourseName);
+    console.log("appId:", application?.id, "application_id:", application?.application_id);
+    console.log(JSON.stringify(applicantExtract, null, 2));
+    console.log("=== END DEBUG ===");
+
 
     applicantGrade = applicantExtract?.grade ?? null;
     applicantCreditHours = applicantExtract?.credit_hours ?? null;
@@ -260,7 +267,7 @@ export async function callGeminiJSON({ prompt, jsonSchema }) {
   if (!apiKey) throw new Error("Missing GEMINI_API_KEY in backend/.env");
 
   const endpoint =
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
 
   const body = {
     contents: [
@@ -305,35 +312,35 @@ export async function extractApplicantCourseResultWithAI({ transcriptText, targe
   const trimmed = transcriptText.slice(0, 35000); // keep token cost small
 
   const prompt = `
-You are extracting structured data from a university transcript.
+  You are extracting structured data from a university transcript.
 
-Task:
-Find the course in the transcript that best matches the target course name:
-TARGET_COURSE_NAME: "${targetCourseName}"
+  Task:
+  Find the course in the transcript that best matches the target course name:
+  TARGET_COURSE_NAME: "${targetCourseName}"
 
-Return the student's achieved GRADE and the CREDIT_HOURS (or "Credit", "Credit Value", etc.) for that matched course.
+  Return the student's achieved GRADE and the CREDIT_HOURS (or "Credit", "Credit Value", etc.) for that matched course.
 
-Rules:
-- You MUST extract grade and credit_hours from the SAME row/entry as the matched course.
-- If the transcript has multiple similar names, choose the one whose course name is the closest match to TARGET_COURSE_NAME.
-- Do NOT guess. If credit hours is not present on the same row/entry, return null.
-- Grade must be exactly as written (e.g., "C", "C+", "A-", "B").
+  Rules:
+  - You MUST extract grade and credit_hours from the SAME row/entry as the matched course.
+  - If the transcript has multiple similar names, choose the one whose course name is the closest match to TARGET_COURSE_NAME.
+  - Do NOT guess. If credit hours is not present on the same row/entry, return null.
+  - Grade must be exactly as written (e.g., "C", "C+", "A-", "B").
 
-Transcript text:
----
-${trimmed}
----
+  Transcript text:
+  ---
+  ${trimmed}
+  ---
 
-Return ONLY JSON in this format:
-{
-  "match_found": boolean,
-  "matched_course_name": string|null,
-  "matched_course_code": string|null,
-  "grade": string|null,
-  "credit_hours": number|null,
-  "confidence": number
-}
-`;
+  Return ONLY JSON in this format:
+  {
+    "match_found": boolean,
+    "matched_course_name": string|null,
+    "matched_course_code": string|null,
+    "grade": string|null,
+    "credit_hours": number|null,
+    "confidence": number
+  }
+  `;
 
   return callGeminiJSON({ prompt });
 }

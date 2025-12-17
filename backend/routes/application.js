@@ -3,7 +3,7 @@ import pool from "../config/db.js";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-import { extractPdfText, extractApplicantCourseResultWithAI, extractSunwayCreditHoursWithAI, buildSimilarityEvidence } from "../services/aiService.js";
+import { extractPdfText, extractApplicantCourseResultWithAI, extractSunwayCreditHoursWithAI, buildSimilarityEvidence, runAiAnalysis } from "../services/aiService.js";
 import { fileURLToPath } from "url";
 
 
