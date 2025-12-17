@@ -6,6 +6,7 @@ import applicationRoutes from "./routes/application.js";
 import authRoutes from "./routes/auth.js";
 import usersRoutes from "./routes/users.js";
 import path from "path";
+import sunwayRoutes from "./routes/sunway.js";
 
 
 dotenv.config();
@@ -21,6 +22,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/applications", applicationRoutes);
 app.use("/api/users", usersRoutes);
 app.use("/uploads", express.static(path.join(process.cwd(), "backend", "uploads")));
+app.use("/api/sunway", sunwayRoutes);
 
 // DB TEST ROUTE
 import dbTestRoutes from "./routes/testDB.js";

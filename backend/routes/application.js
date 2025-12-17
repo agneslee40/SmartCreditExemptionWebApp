@@ -5,8 +5,17 @@ import path from "path";
 import fs from "fs";
 import { runAiAnalysis } from "../services/aiService.js";
 
-
 const router = express.Router();
+
+/* =========================================================
+   Helpers
+   ========================================================= */
+function parseCodes(raw) {
+  return String(raw || "")
+    .split(/[,;|]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
 
 /* ---------- File Upload Setup (PDFs) ---------- */
 const storage = multer.diskStorage({
@@ -22,13 +31,22 @@ const storage = multer.diskStorage({
   },
 });
 
+const upload = multer({
+  storage,
+  fileFilter: (req, file, cb) => {
+    if (!file.mimetype.includes("pdf")) return cb(new Error("PDFs only"));
+    cb(null, true);
+  },
+});
+
+/* =========================================================
+   AI: run & persist into ai_analysis + applications snapshot
+   ========================================================= */
 async function runAndPersistAi(appId) {
-  // fetch application
   const appR = await pool.query(`SELECT * FROM applications WHERE id = $1`, [appId]);
   if (appR.rows.length === 0) throw new Error("Application not found");
   const application = appR.rows[0];
 
-  // fetch documents
   const docsR = await pool.query(
     `SELECT id, file_name, file_type, file_path, uploaded_at
      FROM documents
@@ -38,25 +56,15 @@ async function runAndPersistAi(appId) {
   );
   const documents = docsR.rows;
 
-  // run AI
   const ai = await runAiAnalysis(application, documents);
 
-  // insert into ai_analysis
   const insertR = await pool.query(
     `INSERT INTO ai_analysis (application_id, similarity, grade_detected, credit_hours, decision, reasoning)
      VALUES ($1, $2, $3, $4, $5, $6)
      RETURNING *`,
-    [
-      appId,
-      ai.similarity,
-      ai.gradeDetected,
-      ai.creditHours,
-      ai.decision,
-      ai.reasoning,
-    ]
+    [appId, ai.similarity, ai.gradeDetected, ai.creditHours, ai.decision, ai.reasoning]
   );
 
-  // update applications snapshot fields (so ApplicationDetails can show quickly)
   await pool.query(
     `UPDATE applications
      SET ai_score = $1,
@@ -76,92 +84,75 @@ async function runAndPersistAi(appId) {
   return insertR.rows[0];
 }
 
-
-const upload = multer({
-  storage,
-  fileFilter: (req, file, cb) => {
-    if (!file.mimetype.includes("pdf")) return cb(new Error("PDFs only"));
-    cb(null, true);
-  },
-});
-
 /* =========================================================
-   AI SUGGESTED OUTCOME (STUB IMPLEMENTATION)
-   - You can replace this later with your real Python pipeline.
-   - This writes into:
-     1) ai_analysis table (history)
-     2) applications table (latest fields)
+   0) GET /api/applications/:id/review
+   IMPORTANT: NO pdf parsing here.
+   The review page should consume:
+   - applicant docs (URLs)
+   - sunway courses (URLs)
+   - latest ai_analysis row (reasoning JSON)
    ========================================================= */
-async function runAiForApplication(applicationDbId) {
-  // 1) Load application + docs
-  const appRes = await pool.query(`SELECT * FROM applications WHERE id = $1`, [applicationDbId]);
-  if (appRes.rows.length === 0) throw new Error("Application not found");
-  const app = appRes.rows[0];
+router.get("/:id/review", async (req, res) => {
+  try {
+    const appId = Number(req.params.id);
+    if (!Number.isFinite(appId)) return res.status(400).json({ error: "Invalid application id" });
 
-  const docsRes = await pool.query(
-    `SELECT id, file_name, file_type, file_path, uploaded_at
-     FROM documents
-     WHERE application_id = $1
-     ORDER BY uploaded_at DESC`,
-    [applicationDbId]
-  );
-  const docs = docsRes.rows;
+    // 1) application
+    const appR = await pool.query("SELECT * FROM applications WHERE id=$1", [appId]);
+    const application = appR.rows[0];
+    if (!application) return res.status(404).json({ error: "Application not found" });
 
-  // 2) ---- STUB extraction logic ----
-  // Replace these with your real outputs later:
-  // - similarity: float 0..1
-  // - grade_detected: varchar
-  // - credit_hours: int
-  // - decision: Approve/Reject
-  //
-  // Example heuristic:
-  const gradeDetected = app.grade_detected || "A-";      // placeholder if not generated yet
-  const markDetected = app.mark_detected || "85";        // placeholder
-  const creditHours = 3;                                 // placeholder
-  const similarity = 0.82;                               // placeholder (82%)
+    // 2) applicant documents (+ URL for react-pdf)
+    const docsR = await pool.query(
+      "SELECT * FROM documents WHERE application_id=$1 ORDER BY uploaded_at ASC",
+      [appId]
+    );
 
-  // decision rule (same as your prototype)
-  const gradeOrder = ["F","D-","D","D+","C-","C","C+","B-","B","B+","A-","A","A+"];
-  const gradeOk = gradeOrder.indexOf(String(gradeDetected).toUpperCase()) >= gradeOrder.indexOf("C");
-  const simOk = similarity >= 0.8;
-  const creditOk = creditHours >= 3;
+    const applicant_documents = docsR.rows.map((d) => {
+      // Your DB stores absolute Windows path like C:\...\backend\uploads\123_file.pdf
+      const filename = String(d.file_path || "").split(/[/\\]/).pop();
+      return {
+        ...d,
+        // direct static URL (because you have app.use("/uploads", express.static(...)))
+        file_url: filename ? `http://localhost:5000/uploads/${filename}` : null,
+      };
+    });
 
-  const decision = gradeOk && simOk && creditOk ? "Approve" : "Reject";
+    // 3) Sunway courses (fixed backend library)
+    const codes = parseCodes(application.requested_subject_code);
+    const sunwayR = await pool.query(
+      "SELECT * FROM sunway_courses WHERE subject_code = ANY($1::text[]) ORDER BY subject_code",
+      [codes]
+    );
 
-  const reasoning = {
-    summary: "Stub reasoning (replace with real extraction later).",
-    checks: {
-      grade: { detected: gradeDetected, required: ">= C", pass: gradeOk },
-      similarity: { detected: similarity, required: ">= 0.80", pass: simOk },
-      credit_hours: { detected: creditHours, required: ">= 3", pass: creditOk },
-    },
-    docs_used: docs.map((d) => ({ id: d.id, file_name: d.file_name })),
-  };
+    const sunway_courses = sunwayR.rows.map((c) => ({
+      ...c,
+      syllabus_url: c.syllabus_pdf_path ? `http://localhost:5000${c.syllabus_pdf_path}` : null,
+    }));
 
-  // 3) Insert into ai_analysis history
-  const aiInsert = await pool.query(
-    `INSERT INTO ai_analysis (application_id, similarity, grade_detected, credit_hours, decision, reasoning)
-     VALUES ($1,$2,$3,$4,$5,$6)
-     RETURNING *`,
-    [applicationDbId, similarity, gradeDetected, creditHours, decision, reasoning]
-  );
+    // 4) Latest AI analysis row (if exists)
+    const aiR = await pool.query(
+      `SELECT *
+       FROM ai_analysis
+       WHERE application_id = $1
+       ORDER BY analyzed_at DESC
+       LIMIT 1`,
+      [appId]
+    );
+    const ai_analysis = aiR.rows[0] || null;
 
-  const aiRow = aiInsert.rows[0];
-
-  // 4) Update latest fields in applications
-  // store similarity in ai_score (0..1) and decision in ai_decision
-  await pool.query(
-    `UPDATE applications
-     SET ai_score = $1,
-         ai_decision = $2,
-         mark_detected = $3,
-         grade_detected = $4
-     WHERE id = $5`,
-    [similarity, decision, markDetected, gradeDetected, applicationDbId]
-  );
-
-  return aiRow;
-}
+    // 5) Return review payload
+    return res.json({
+      application,
+      applicant_documents,
+      sunway_courses,
+      ai_analysis,
+    });
+  } catch (err) {
+    console.error("GET /applications/:id/review error:", err);
+    return res.status(500).json({ error: "Failed to build review payload", details: err.message });
+  }
+});
 
 /* =========================================================
    1) GET /api/applications
@@ -218,9 +209,7 @@ router.get("/", async (req, res) => {
 
 /* =========================================================
    2) GET /api/applications/:id
-   - Details page (3.2 Application Details)
    ========================================================= */
-// 2) GET /api/applications/:id  (Details page)
 router.get("/:id", async (req, res) => {
   try {
     const appId = Number(req.params.id);
@@ -234,16 +223,24 @@ router.get("/:id", async (req, res) => {
     );
     if (appResult.rows.length === 0) return res.status(404).json({ error: "Not found" });
 
-    const subjectsResult = await pool.query(
-      `SELECT subject_code, subject_name
-       FROM application_requested_subjects
-       WHERE application_id = $1
-       ORDER BY id ASC`,
-      [appId]
-    );
+    // Optional: you referenced this table; keep as-is if it exists
+    let subjects = [];
+    try {
+      const subjectsResult = await pool.query(
+        `SELECT subject_code, subject_name
+         FROM application_requested_subjects
+         WHERE application_id = $1
+         ORDER BY id ASC`,
+        [appId]
+      );
+      subjects = subjectsResult.rows;
+    } catch {
+      // ignore if table not present
+      subjects = [];
+    }
 
     const app = appResult.rows[0];
-    app.requested_subjects = subjectsResult.rows; // array
+    app.requested_subjects = subjects;
 
     res.json(app);
   } catch (err) {
@@ -268,7 +265,6 @@ router.get("/:id/documents", async (req, res) => {
       [appId]
     );
 
-    // Add file_size (best-effort). If file doesn't exist, size = null.
     const docs = r.rows.map((d) => {
       try {
         const stat = fs.statSync(d.file_path);
@@ -287,8 +283,6 @@ router.get("/:id/documents", async (req, res) => {
 
 /* =========================================================
    4) Document view/download
-   NOTE: define these BEFORE "/:id" routes in real projects,
-   but this works because they start with "/documents/...".
    ========================================================= */
 router.get("/documents/:docId/download", async (req, res) => {
   try {
@@ -377,9 +371,6 @@ router.post("/:id/ai-analysis/run", async (req, res) => {
   }
 });
 
-
-
-
 /* =========================================================
    7) POST /api/applications (create application)
    ========================================================= */
@@ -401,7 +392,7 @@ router.post("/", upload.single("document"), async (req, res) => {
       nric_passport,
       prev_year_completion,
       prev_subject_name,
-      requested_subject_code
+      requested_subject_code,
     } = req.body;
 
     const toISODate = (s) => {
@@ -414,8 +405,7 @@ router.post("/", upload.single("document"), async (req, res) => {
       return `${yyyy}-${mm}-${dd}`;
     };
 
-    const academic_session =
-      intake && semester ? `${String(intake).replace("-", "")} | ${semester}` : null;
+    const academic_session = intake && semester ? `${String(intake).replace("-", "")} | ${semester}` : null;
 
     const document_path = req.file ? req.file.path : null;
 
@@ -462,33 +452,22 @@ router.post("/", upload.single("document"), async (req, res) => {
         nric_passport || null,
         prev_year_completion || null,
         prev_subject_name || null,
-        requested_subject_code || null
+        requested_subject_code || null,
       ]
     );
 
-    // OPTIONAL: If you want AI to run immediately on creation:
-    // Usually better to run after all docs are uploaded.
-    // If you uploaded 1 doc in this POST, you can run here.
-    try {
-      await runAiForApplication(result.rows[0].id);
-    } catch (e) {
-      console.warn("AI run skipped/failed on create:", e.message);
-    }
-    // Auto-run AI if a document was uploaded in the create call
+    // If a doc uploaded in create call: save into documents + auto-run AI
     try {
       if (document_path) {
         await pool.query(
           `INSERT INTO documents (application_id, file_name, file_type, file_path)
-          VALUES ($1, $2, $3, $4)`,
+           VALUES ($1, $2, $3, $4)`,
           [result.rows[0].id, req.file.originalname, req.file.mimetype, document_path]
         );
-
-        // then run AI using documents table
         await runAndPersistAi(result.rows[0].id);
       }
     } catch (aiErr) {
       console.error("Auto AI run after create failed:", aiErr);
-      // don’t block creation flow; just log
     }
 
     res.status(201).json({ message: "Application created", application: result.rows[0] });
@@ -500,7 +479,6 @@ router.post("/", upload.single("document"), async (req, res) => {
 
 /* =========================================================
    8) POST /api/applications/:id/documents (upload multiple)
-   - After upload, auto-run AI
    ========================================================= */
 router.post("/:id/documents", upload.array("documents", 10), async (req, res) => {
   try {
@@ -525,20 +503,19 @@ router.post("/:id/documents", upload.array("documents", 10), async (req, res) =>
       inserted.push(result.rows[0]);
     }
 
-    // ✅ auto-run AI after docs upload
-    // auto-run AI after uploading docs (now we have more evidence)
+    let analysis = null;
     try {
-      await runAndPersistAi(applicationDbId);
+      analysis = await runAndPersistAi(appId);
     } catch (aiErr) {
       console.error("Auto AI run after doc upload failed:", aiErr);
     }
-
 
     res.status(201).json({
       message: "Documents uploaded",
       application_id: appId,
       documents: inserted,
-      ai_generated: ai,
+      ai_generated: !!analysis,
+      analysis,
     });
   } catch (err) {
     console.error("POST /applications/:id/documents error:", err);
@@ -546,7 +523,9 @@ router.post("/:id/documents", upload.array("documents", 10), async (req, res) =>
   }
 });
 
-// Assign an SL to an application (PL action)
+/* =========================================================
+   Assign an SL to an application (PL action)
+   ========================================================= */
 router.patch("/:id/assign", async (req, res) => {
   try {
     const appId = Number(req.params.id);
@@ -556,11 +535,9 @@ router.patch("/:id/assign", async (req, res) => {
     if (!Number.isFinite(appId)) return res.status(400).json({ error: "Invalid application id" });
     if (!Number.isFinite(Number(sl_user_id))) return res.status(400).json({ error: "Invalid sl_user_id" });
 
-    // ensure SL exists + role is SL
     const sl = await pool.query(`SELECT id, name, email FROM users WHERE id = $1 AND role = 'SL'`, [sl_user_id]);
     if (sl.rows.length === 0) return res.status(404).json({ error: "Subject Lecturer not found" });
 
-    // update application assignment + statuses
     const updated = await pool.query(
       `UPDATE applications
        SET assigned_to = $1,
@@ -586,7 +563,6 @@ router.patch("/:id/assign", async (req, res) => {
 
 /* =========================================================
    9) PATCH /api/applications/:id (update decisions/status)
-   FIXED: removed undefined `status`
    ========================================================= */
 router.patch("/:id", async (req, res) => {
   try {
@@ -597,19 +573,43 @@ router.patch("/:id", async (req, res) => {
       remarks,
       pl_status,
       sl_status,
-      registry_status
-    } = req.body;
+      registry_status,
+      final_similarity,
+      final_grade,
+      final_credit_hours,
+      final_equivalent_grade,
+      override_reason,
+      overridden_by,
+    } = req.body || {};
 
     const sets = [];
     const vals = [];
 
-    if (final_decision !== undefined) { vals.push(final_decision); sets.push(`final_decision = $${vals.length}`); }
-    if (ai_score !== undefined)       { vals.push(ai_score);       sets.push(`ai_score = $${vals.length}`); }
-    if (ai_decision !== undefined)    { vals.push(ai_decision);    sets.push(`ai_decision = $${vals.length}`); }
-    if (remarks !== undefined)        { vals.push(remarks);        sets.push(`remarks = $${vals.length}`); }
-    if (pl_status !== undefined)      { vals.push(pl_status);      sets.push(`pl_status = $${vals.length}`); }
-    if (sl_status !== undefined)      { vals.push(sl_status);      sets.push(`sl_status = $${vals.length}`); }
-    if (registry_status !== undefined){ vals.push(registry_status);sets.push(`registry_status = $${vals.length}`); }
+    const add = (field, value) => {
+      vals.push(value);
+      sets.push(`${field} = $${vals.length}`);
+    };
+
+    if (final_decision !== undefined) add("final_decision", final_decision);
+    if (ai_score !== undefined) add("ai_score", ai_score);
+    if (ai_decision !== undefined) add("ai_decision", ai_decision);
+    if (remarks !== undefined) add("remarks", remarks);
+
+    if (pl_status !== undefined) add("pl_status", pl_status);
+    if (sl_status !== undefined) add("sl_status", sl_status);
+    if (registry_status !== undefined) add("registry_status", registry_status);
+
+    // override fields
+    if (final_similarity !== undefined) add("final_similarity", final_similarity);
+    if (final_grade !== undefined) add("final_grade", final_grade);
+    if (final_credit_hours !== undefined) add("final_credit_hours", final_credit_hours);
+    if (final_equivalent_grade !== undefined) add("final_equivalent_grade", final_equivalent_grade);
+    if (override_reason !== undefined) add("override_reason", override_reason);
+
+    if (overridden_by !== undefined) {
+      add("overridden_by", overridden_by);
+      add("overridden_at", new Date());
+    }
 
     if (sets.length === 0) return res.status(400).json({ error: "Nothing to update" });
 

@@ -2,6 +2,163 @@
 import fs from "fs";
 import { createRequire } from "module";
 
+// =====================
+// TF-IDF + Cosine Utils
+// =====================
+
+function tokenizeTfidf(text) {
+  return String(text || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .filter(w => w.length >= 3);
+}
+
+function tfidfVector(tokensA, tokensB) {
+  const vocab = new Map();
+  const add = (t) => { if (!vocab.has(t)) vocab.set(t, vocab.size); };
+
+  tokensA.forEach(add);
+  tokensB.forEach(add);
+
+  const N = 2;
+  const df = new Array(vocab.size).fill(0);
+
+  const seenA = new Set(tokensA);
+  const seenB = new Set(tokensB);
+
+  for (const t of seenA) df[vocab.get(t)]++;
+  for (const t of seenB) df[vocab.get(t)]++;
+
+  const idf = df.map(d => Math.log((N + 1) / (d + 1)) + 1);
+
+  const vecA = new Array(vocab.size).fill(0);
+  const vecB = new Array(vocab.size).fill(0);
+
+  const tfA = new Map();
+  const tfB = new Map();
+
+  tokensA.forEach(t => tfA.set(t, (tfA.get(t) || 0) + 1));
+  tokensB.forEach(t => tfB.set(t, (tfB.get(t) || 0) + 1));
+
+  const lenA = tokensA.length || 1;
+  const lenB = tokensB.length || 1;
+
+  for (const [t, c] of tfA.entries()) {
+    const i = vocab.get(t);
+    vecA[i] = (c / lenA) * idf[i];
+  }
+  for (const [t, c] of tfB.entries()) {
+    const i = vocab.get(t);
+    vecB[i] = (c / lenB) * idf[i];
+  }
+
+  return { vecA, vecB };
+}
+
+function cosine(vecA, vecB) {
+  let dot = 0, na = 0, nb = 0;
+  for (let i = 0; i < vecA.length; i++) {
+    dot += vecA[i] * vecB[i];
+    na += vecA[i] * vecA[i];
+    nb += vecB[i] * vecB[i];
+  }
+  if (na === 0 || nb === 0) return 0;
+  return dot / (Math.sqrt(na) * Math.sqrt(nb));
+}
+
+function splitIntoChunks(text) {
+  const t = String(text || "").trim();
+  if (!t) return [];
+
+  // Simple, explainable heuristic: paragraph-level chunks
+  return t
+    .split(/\n\s*\n+/)
+    .map(s => s.trim())
+    .filter(Boolean);
+}
+
+function similarityWithBreakdown(textA, textB) {
+  const chunksA = splitIntoChunks(textA);
+  const chunksB = splitIntoChunks(textB);
+
+  // fallback: whole-doc similarity
+  if (chunksA.length === 0 || chunksB.length === 0) {
+    const tokensA = tokenizeTfidf(textA);
+    const tokensB = tokenizeTfidf(textB);
+    const { vecA, vecB } = tfidfVector(tokensA, tokensB);
+    const overall = cosine(vecA, vecB);
+    return { overall, breakdown: [] };
+  }
+
+  let weightedSum = 0;
+  let weightTotal = 0;
+  const breakdown = [];
+
+  for (let i = 0; i < chunksA.length; i++) {
+    const tokensA = tokenizeTfidf(chunksA[i]);
+
+    let best = 0;
+    let bestJ = -1;
+
+    for (let j = 0; j < chunksB.length; j++) {
+      const tokensB = tokenizeTfidf(chunksB[j]);
+      const { vecA, vecB } = tfidfVector(tokensA, tokensB);
+      const s = cosine(vecA, vecB);
+      if (s > best) {
+        best = s;
+        bestJ = j;
+      }
+    }
+
+    const weight = Math.max(tokensA.length, 1);
+    weightedSum += weight * best;
+    weightTotal += weight;
+
+    breakdown.push({
+      applicant_chunk: i,
+      matched_sunway_chunk: bestJ,
+      similarity: best,
+      weight
+    });
+  }
+
+  const overall = weightTotal ? weightedSum / weightTotal : 0;
+  return { overall, breakdown };
+}
+
+function joinTexts(docs) {
+  return docs.map(d => d._text || "").join("\n\n");
+}
+
+function matchApplicantToSunway(sunwayText, applicantDocs) {
+  let bestSingle = { score: 0, docId: null, breakdown: [] };
+
+  for (const d of applicantDocs) {
+    const r = similarityWithBreakdown(sunwayText, d._text || "");
+    if (r.overall > bestSingle.score) {
+      bestSingle = {
+        score: r.overall,
+        docId: d.id,
+        breakdown: r.breakdown
+      };
+    }
+  }
+
+  const combinedText = joinTexts(applicantDocs);
+  const combinedRes = similarityWithBreakdown(sunwayText, combinedText);
+
+  return {
+    best_single: bestSingle,
+    combined: {
+      score: combinedRes.overall,
+      breakdown: combinedRes.breakdown
+    }
+  };
+}
+
+
 const require = createRequire(import.meta.url);
 const pdfParse = require("pdf-parse");
 
@@ -211,3 +368,6 @@ export async function runAiAnalysis(application, documents = []) {
     reasoning,
   };
 }
+
+export { matchApplicantToSunway, similarityWithBreakdown };
+
