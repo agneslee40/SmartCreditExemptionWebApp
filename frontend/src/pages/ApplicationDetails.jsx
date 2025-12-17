@@ -66,7 +66,7 @@ function StatusPill({ label, tone = "gray" }) {
 
 function CardShell({ title, children }) {
   return (
-    <div className="rounded-[28px] bg-[#EFEFEF] px-8 py-7">
+    <div className="rounded-[28px] bg-[#EFEFEF] px-8 py-6">
       <div className="text-xl font-extrabold text-[#0B0F2A]">{title}</div>
       <div className="mt-5">{children}</div>
     </div>
@@ -277,7 +277,7 @@ export default function ApplicationDetails() {
         </div>
 
         {/* Right status stack */}
-        <div className="mt-24 space-y-5 text-sm">
+        <div className="mt-14 space-y-4 text-sm">
           <div className="flex items-center justify-end gap-4">
             <div className="text-[#0B0F2A]/80">Subject Lecturer</div>
             <StatusPill label={vm.status.sl} tone={statusTone(vm.status.sl)} />
@@ -336,14 +336,14 @@ export default function ApplicationDetails() {
               <tbody>
                 {sortedDocs.map((d) => (
                   <tr key={d.id} className="border-b border-black/10 last:border-0">
-                    <td className="py-5 pr-4 text-sm">
+                    <td className="py-4 pr-4 text-sm">
                       <span className="underline underline-offset-4">{d.file_name}</span>
                     </td>
-                    <td className="py-5 px-4 text-sm">{d.file_type || "-"}</td>
-                    <td className="py-5 px-4 text-sm">{d.uploaded_at ? String(d.uploaded_at).slice(0, 10) : "-"}</td>
-                    <td className="py-5 px-4 text-sm">{formatBytes(d.file_size)}</td>
+                    <td className="py-4 px-4 text-sm">{d.file_type || "-"}</td>
+                    <td className="py-4 px-4 text-sm">{d.uploaded_at ? String(d.uploaded_at).slice(0, 10) : "-"}</td>
+                    <td className="py-4 px-4 text-sm">{formatBytes(d.file_size)}</td>
 
-                    <td className="py-5 pl-4">
+                    <td className="py-4 pl-4">
                       <div className="flex items-center justify-end gap-4">
                         <button
                           onClick={() =>
@@ -385,40 +385,55 @@ export default function ApplicationDetails() {
       {/* Academic Particulars */}
       <div className="mt-10">
         <CardShell title="Academic Particulars">
-          <div className="grid grid-cols-3 gap-x-16 gap-y-10">
-            <InfoItem label="Year of Completion" value={vm.academic.yearCompletion} linkish />
-            <InfoItem label="Qualification Obtained/ Programmed Studied" value={vm.academic.qualification} linkish />
-            <InfoItem label="Name of Institution" value={vm.academic.institution} linkish />
+          <div className="grid grid-cols-8 gap-x-10">
+            <InfoItem
+              label="Year of Completion"
+              value={vm.academic.yearCompletion}
+              linkish
+            />
 
-            <div className="col-span-3">
-              <div className="mt-2 grid grid-cols-5 gap-x-16 gap-y-8">
-                <div>
-                  <div className="text-sm font-semibold text-[#0B0F2A]/80">Sunway Subject Code, Name</div>
-                  <div className="mt-2 flex gap-4">
-                    <span className="underline text-sm">{vm.academic.sunwaySubjectCode}</span>
-                    <span className="underline text-sm">{vm.academic.sunwaySubjectName}</span>
-                  </div>
-                </div>
+            <InfoItem
+              label="Qualification Obtained"
+              value={vm.academic.qualification}
+              linkish
+            />
 
-                <div>
-                  <div className="text-sm font-semibold text-[#0B0F2A]/80">Subject Name (previously taken)</div>
-                  <div className="mt-2 underline text-sm">{vm.academic.previousSubject}</div>
-                </div>
+            <InfoItem
+              label="Institution"
+              value={vm.academic.institution}
+              linkish
+            />
 
-                <div>
-                  <div className="text-sm font-semibold text-[#0B0F2A]/80">Mark Obtained</div>
-                  <div className="mt-2 underline text-sm">{vm.academic.mark}</div>
-                </div>
+            <InfoItem
+              label="Sunway Subject Code"
+              value={vm.academic.sunwaySubjectCode}
+              linkish
+            />
 
-                <div>
-                  <div className="text-sm font-semibold text-[#0B0F2A]/80">Grade</div>
-                  <div className="mt-2 text-sm">{vm.academic.grade}</div>
-                </div>
+            <InfoItem
+              label="Sunway Subject Name"
+              value={vm.academic.sunwaySubjectName}
+              linkish
+            />
 
-                <div />
-              </div>
-            </div>
+            <InfoItem
+              label="Previous Subject"
+              value={vm.academic.previousSubject}
+              linkish
+            />
+
+            <InfoItem
+              label="Mark"
+              value={vm.academic.mark}
+            />
+
+            <InfoItem
+              label="Grade"
+              value={vm.academic.grade}
+            />
           </div>
+
+
         </CardShell>
       </div>
 
