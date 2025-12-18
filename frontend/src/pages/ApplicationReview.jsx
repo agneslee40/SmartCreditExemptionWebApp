@@ -211,12 +211,24 @@ export default function ApplicationReview() {
               {application && (
                 <div style={{ marginTop: 6, color: "#666", fontSize: 13, lineHeight: 1.4 }}>
                   <div>
-                    <b>Requested Subject:</b> {application.requested_subject || "-"}
-                    {application.requested_subject_code ? ` (${application.requested_subject_code})` : ""}
+                    <b style={{ color: "#941B0C" }}>
+                      Previously Taken Subject:
+                    </b>{" "}
+                    {application.prev_subject_name || "-"}
                   </div>
+
                   <div>
-                    <b>Previously Taken Subject:</b> {application.prev_subject_name || "-"}
+                    <b style={{ color: "#61A0AF" }}>
+                      Requested Subject:
+                    </b>{" "}
+                    {application.requested_subject || "-"}
+                    {application.requested_subject_code
+                      ? ` (${application.requested_subject_code})`
+                      : ""}
                   </div>
+
+                  
+
                 </div>
               )}
             </div>
@@ -520,9 +532,17 @@ export default function ApplicationReview() {
           )}
         </div>
       
+        
         {/* CENTER PDF */}
         <div style={pdfCard}>
-          <div style={pdfTitle}>Applicant PDF</div>
+          <div
+            style={{
+              ...pdfTitle,
+              color: "#941B0C" 
+            }}
+          >
+            Previously Taken Subject (Student Document)
+          </div>
           <div style={pdfBody}>
             {loading ? <div style={{ padding: 16 }}>Loading…</div> : <PdfViewer fileUrl={selectedApplicant?.file_url} />}
           </div>
@@ -530,7 +550,15 @@ export default function ApplicationReview() {
 
         {/* RIGHT PDF */}
         <div style={pdfCard}>
-          <div style={pdfTitle}>Sunway Syllabus PDF</div>
+          <div
+            style={{
+              ...pdfTitle,
+              color: "#61A0AF" // orange (same family as your active tab)
+            }}
+          >
+            Requested Sunway Subject (Official Syllabus)
+          </div>
+
           <div style={pdfBody}>
             {loading ? <div style={{ padding: 16 }}>Loading…</div> : <PdfViewer fileUrl={selectedSunway?.syllabus_url} />}
           </div>
