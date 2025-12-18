@@ -34,14 +34,21 @@ function SectionCard({ title, countBadge, rows, getActionLabel, onActionClick, s
       
 
       <div className="relative mt-4 rounded-[32px] bg-[#EFEFEF] px-6 py-5">
-        <div className="flex items-center gap-6 mb-6">
-          <div className="w-20 h-20 rounded-full bg-[#FF6B2C] text-[#0B0F2A] flex items-center justify-center text-4xl font-bold shadow-md">
-            {countBadge}
+        <div className="flex items-center justify-between mb-6">
+          <div className="relative inline-block">
+            <h2 className="text-4xl font-extrabold tracking-tight text-[#050827]">
+              {title}
+            </h2>
+
+            {Number(countBadge) > 0 && (
+              <span className="absolute -top-3 -right-6 min-w-[28px] h-[28px] px-2 rounded-full bg-[#FF6B2C] text-white text-sm font-extrabold flex items-center justify-center shadow-md">
+                {countBadge}
+              </span>
+            )}
           </div>
-          <h2 className="text-4xl font-extrabold tracking-tight text-[#050827]">
-            {title}
-          </h2>
         </div>
+
+
         <div className="overflow-x-auto">
           <table className="min-w-[1100px] w-full text-sm text-left">
             <thead className="text-gray-500 border-b">
@@ -199,7 +206,7 @@ export default function Dashboard() {
       />
 
       <SectionCard
-        title="Waiting on Subject Lecturers"
+        title="Waiting on Programme Leaders"
         countBadge={waitingOnSL.length}
         rows={waitingOnSL}
         getActionLabel={() => "Remind"}
