@@ -78,6 +78,9 @@ export default function ApplicationReview() {
 
   // Override
   const [overrideOpen, setOverrideOpen] = useState(false);
+  // Left panel highlight
+  const [activeLeftCard, setActiveLeftCard] = useState("system"); // "system" | "override"
+
   const [finalSimilarity, setFinalSimilarity] = useState(""); // percent
   const [finalGrade, setFinalGrade] = useState("");
   const [finalCreditHours, setFinalCreditHours] = useState("");
@@ -244,7 +247,7 @@ export default function ApplicationReview() {
 
   // 5) UI
   return (
-    <div className="bg-white px-7 py-7">
+    <div className="bg-white px-7 py-4">
       {/* Top row: back + title block + right actions (same style as Application Details) */}
       <div className="flex items-start justify-between gap-6">
         {/* Left: back + title + meta */}
@@ -257,12 +260,12 @@ export default function ApplicationReview() {
             <IconBack className="h-8 w-8" />
           </button>
 
-          <h1 className="mt-4 text-6xl font-extrabold tracking-tight text-[#0B0F2A]">
+          <h1 className="mt-2 mb-2 text-6xl font-extrabold tracking-tight text-[#0B0F2A]">
             Application Review
           </h1>
 
           {/* Case line (NOT indented) */}
-          <div className="mt-3 text-sm font-semibold text-[#0B0F2A]/80">
+          <div className="mt-6 text-sm font-semibold text-[#0B0F2A]/80">
             {application ? `Case: ${application.application_id} • ${application.type}` : "Loading case…"}
           </div>
 
@@ -297,7 +300,13 @@ export default function ApplicationReview() {
           </button>
 
           <button
-            onClick={() => setOverrideOpen((v) => !v)}
+            onClick={() => {
+              setOverrideOpen((v) => {
+                const next = !v;
+                setActiveLeftCard(next ? "override" : "system");
+                return next;
+              });
+            }}
             className="rounded-xl bg-[#0B0F2A] px-5 py-3 font-extrabold text-white hover:opacity-95"
           >
             {overrideOpen ? "Close Override" : "Override Decision"}
@@ -361,9 +370,86 @@ export default function ApplicationReview() {
               </select>
             )}
           </div>
+          
+          {/* Override panel */}
+          {overrideOpen && (
+            <div
+              style={cardWithActive(activeLeftCard === "override")}
+              onClick={() => setActiveLeftCard("override")}
+            >
+              <div style={cardTitle}>Manual Override</div>
+
+              <div style={{ fontSize: 13, marginTop: 10 }}>
+                <label style={labelStyle}>Final Similarity (%)</label>
+                <input
+                  type="number"
+                  value={finalSimilarity}
+                  onChange={e => setFinalSimilarity(e.target.value)}
+                  style={inputStyle}
+                />
+
+                <label style={labelStyle}>Final Grade</label>
+                <input
+                  value={finalGrade}
+                  onChange={e => setFinalGrade(e.target.value)}
+                  style={inputStyle}
+                />
+
+                <label style={labelStyle}>Final Credit Hours</label>
+                <input
+                  type="number"
+                  value={finalCreditHours}
+                  onChange={e => setFinalCreditHours(e.target.value)}
+                  style={inputStyle}
+                />
+
+                <label style={labelStyle}>Override Reason (required)</label>
+                <textarea
+                  rows={3}
+                  value={overrideReason}
+                  onChange={e => setOverrideReason(e.target.value)}
+                  style={{ ...inputStyle, resize: "vertical" }}
+                />
+
+                <div style={{ marginTop: 12, padding: 10, background: "#f7f7f7", borderRadius: 10 }}>
+                  <div style={{ fontWeight: 800, marginBottom: 6 }}>Rule Evaluation</div>
+                  <div>Similarity ≥ 80%: {checks.similarityPass ? "✅" : "❌"}</div>
+                  <div>Grade ≥ C: {checks.gradePass ? "✅" : "❌"}</div>
+                  <div>Credit Hours ≥ Sunway ({selectedSunway?.credit_hours ?? 0}): {checks.creditHoursPass ? "✅" : "❌"}</div>
+
+                  <div style={{ marginTop: 8 }}>
+                    <b>Final Decision:</b>{" "}
+                    <span style={{ color: allPass ? "green" : "crimson", fontWeight: 900 }}>
+                      {allPass ? "APPROVE" : "REJECT"}
+                    </span>
+                  </div>
+                </div>
+
+                <button
+                  style={{
+                    marginTop: 12,
+                    width: "100%",
+                    padding: 10,
+                    borderRadius: 10,
+                    border: "none",
+                    background: "#0f172a",
+                    color: "#fff",
+                    fontWeight: 900,
+                    cursor: "pointer"
+                  }}
+                  onClick={saveOverride}
+                >
+                  Save Override
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* System Suggestion */}
-          <div style={cardStyle}>
+          <div
+            style={cardWithActive(activeLeftCard === "system")}
+            onClick={() => setActiveLeftCard("system")}
+          >
             <div style={cardTitle}>System Suggestion</div>
 
             {!ai ? (
@@ -376,17 +462,15 @@ export default function ApplicationReview() {
                   Note: This recommendation is generated by <b>Google Gemini</b> for decision support only.
                   Please verify against the official syllabus and student documents.
                 </div>
-                
-                <div style ={{marginTop: 10}}><b>Decision:</b> {application?.ai_decision ?? "-"}</div>
+
+                <div style={{ marginTop: 10 }}><b>Decision:</b> {application?.ai_decision ?? "-"}</div>
                 <div><b>Similarity:</b> {application?.ai_score != null ? `${Math.round(Number(application.ai_score) * 100)}%` : "-"}</div>
                 <div><b>Grade:</b> {ai.grade_detected || "-"}</div>
                 <div><b>Credit Hours:</b> {ai.credit_hours ?? "-"}</div>
-                
-
-              
               </div>
             )}
           </div>
+
 {/* 
           //Similarity Evidence
           <div style={cardStyle}>
@@ -504,76 +588,7 @@ export default function ApplicationReview() {
           </div>
 */}
 
-          {/* Override panel */}
-          {overrideOpen && (
-            <div style={cardStyle}>
-              <div style={cardTitle}>Manual Override</div>
-
-              <div style={{ fontSize: 13, marginTop: 10 }}>
-                <label style={labelStyle}>Final Similarity (%)</label>
-                <input
-                  type="number"
-                  value={finalSimilarity}
-                  onChange={e => setFinalSimilarity(e.target.value)}
-                  style={inputStyle}
-                />
-
-                <label style={labelStyle}>Final Grade</label>
-                <input
-                  value={finalGrade}
-                  onChange={e => setFinalGrade(e.target.value)}
-                  style={inputStyle}
-                />
-
-                <label style={labelStyle}>Final Credit Hours</label>
-                <input
-                  type="number"
-                  value={finalCreditHours}
-                  onChange={e => setFinalCreditHours(e.target.value)}
-                  style={inputStyle}
-                />
-
-                <label style={labelStyle}>Override Reason (required)</label>
-                <textarea
-                  rows={3}
-                  value={overrideReason}
-                  onChange={e => setOverrideReason(e.target.value)}
-                  style={{ ...inputStyle, resize: "vertical" }}
-                />
-
-                <div style={{ marginTop: 12, padding: 10, background: "#f7f7f7", borderRadius: 10 }}>
-                  <div style={{ fontWeight: 800, marginBottom: 6 }}>Rule Evaluation</div>
-                  <div>Similarity ≥ 80%: {checks.similarityPass ? "✅" : "❌"}</div>
-                  <div>Grade ≥ C: {checks.gradePass ? "✅" : "❌"}</div>
-                  <div>Credit Hours ≥ Sunway ({selectedSunway?.credit_hours ?? 0}): {checks.creditHoursPass ? "✅" : "❌"}</div>
-
-                  <div style={{ marginTop: 8 }}>
-                    <b>Final Decision:</b>{" "}
-                    <span style={{ color: allPass ? "green" : "crimson", fontWeight: 900 }}>
-                      {allPass ? "APPROVE" : "REJECT"}
-                    </span>
-                  </div>
-                </div>
-
-                <button
-                  style={{
-                    marginTop: 12,
-                    width: "100%",
-                    padding: 10,
-                    borderRadius: 10,
-                    border: "none",
-                    background: "#0f172a",
-                    color: "#fff",
-                    fontWeight: 900,
-                    cursor: "pointer"
-                  }}
-                  onClick={saveOverride}
-                >
-                  Save Override
-                </button>
-              </div>
-            </div>
-          )}
+          
         </div>
       
         
@@ -844,6 +859,16 @@ const cardStyle = {
   boxShadow: "0 1px 6px rgba(0,0,0,0.04)"
 };
 
+function cardWithActive(isActive) {
+  return {
+    ...cardStyle,
+    border: isActive ? "2px solid #0B0F2A" : cardStyle.border,
+    boxShadow: isActive ? "0 8px 24px rgba(11,15,42,0.10)" : cardStyle.boxShadow,
+    background: isActive ? "#FBFBFF" : cardStyle.background,
+  };
+}
+
+
 const cardTitle = {
   fontWeight: 900,
   fontSize: 16
@@ -894,7 +919,7 @@ const pdfTitle = {
 };
 
 const pdfBody = {
-  height: "calc(100vh - 210px)", // keeps PDFs visible without horizontal scroll
+  height: "calc(100vh - 190px)", // keeps PDFs visible without horizontal scroll
   overflow: "auto"
 };
 
