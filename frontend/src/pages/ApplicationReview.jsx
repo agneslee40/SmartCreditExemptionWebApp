@@ -244,9 +244,11 @@ export default function ApplicationReview() {
 
   // 5) UI
   return (
-    <div style={{ padding: 28 }}>
-      <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16 }}>
-        <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+    <div className="bg-white px-7 py-7">
+      {/* Top row: back + title block + right actions (same style as Application Details) */}
+      <div className="flex items-start justify-between gap-6">
+        {/* Left: back + title + meta */}
+        <div>
           <button
             onClick={goBack}
             className="inline-flex items-center justify-center rounded-xl p-2 text-[#0B0F2A] hover:bg-black/5"
@@ -255,49 +257,39 @@ export default function ApplicationReview() {
             <IconBack className="h-8 w-8" />
           </button>
 
+          <h1 className="mt-4 text-6xl font-extrabold tracking-tight text-[#0B0F2A]">
+            Application Review
+          </h1>
 
-          <div>
-            <div style={{ fontSize: 28, fontWeight: 800, marginBottom: 4 }}>Application Review</div>
-            <div style={{ color: "#666", fontSize: 13 }}>
-              {application ? `Case: ${application.application_id} • ${application.type}` : "Loading case…"}
-              {application && (
-                <div style={{ marginTop: 6, color: "#666", fontSize: 13, lineHeight: 1.4 }}>
-                  <div>
-                    <b style={{ color: "#941B0C" }}>
-                      Previously Taken Subject:
-                    </b>{" "}
-                    {application.prev_subject_name || "-"}
-                  </div>
-
-                  <div>
-                    <b style={{ color: "#61A0AF" }}>
-                      Requested Subject:
-                    </b>{" "}
-                    {application.requested_subject || "-"}
-                    {application.requested_subject_code
-                      ? ` (${application.requested_subject_code})`
-                      : ""}
-                  </div>
-
-                  
-
-                </div>
-              )}
-            </div>
+          {/* Case line (NOT indented) */}
+          <div className="mt-3 text-sm font-semibold text-[#0B0F2A]/80">
+            {application ? `Case: ${application.application_id} • ${application.type}` : "Loading case…"}
           </div>
+
+          {/* Previously/Requested lines (NOT indented) */}
+          {application && (
+            <div className="mt-2 space-y-1 text-sm leading-6">
+              <div>
+                <span className="font-extrabold text-[#941B0C]">Previously Taken Subject:</span>{" "}
+                <span className="text-[#0B0F2A]/80">{application.prev_subject_name || "-"}</span>
+              </div>
+
+              <div>
+                <span className="font-extrabold text-[#61A0AF]">Requested Subject:</span>{" "}
+                <span className="text-[#0B0F2A]/80">
+                  {application.requested_subject || "-"}
+                  {application.requested_subject_code ? ` (${application.requested_subject_code})` : ""}
+                </span>
+              </div>
+            </div>
+          )}
         </div>
 
-        <div style={{ display: "flex", gap: 10 }}>
+        {/* Right: action buttons */}
+        <div className="mt-14 flex items-center gap-3">
           <button
             onClick={acceptAi}
-            style={{
-              padding: "10px 14px",
-              borderRadius: 10,
-              border: "1px solid #ddd",
-              background: "#fff",
-              fontWeight: 700,
-              cursor: "pointer"
-            }}
+            className="rounded-xl border border-black/10 bg-white px-5 py-3 font-extrabold text-[#0B0F2A] hover:bg-black/5 disabled:opacity-50"
             disabled={!ai}
             title={!ai ? "No AI analysis yet" : ""}
           >
@@ -305,21 +297,14 @@ export default function ApplicationReview() {
           </button>
 
           <button
-            onClick={() => setOverrideOpen(v => !v)}
-            style={{
-              padding: "10px 14px",
-              borderRadius: 10,
-              border: "none",
-              background: "#0f172a",
-              color: "#fff",
-              fontWeight: 800,
-              cursor: "pointer"
-            }}
+            onClick={() => setOverrideOpen((v) => !v)}
+            className="rounded-xl bg-[#0B0F2A] px-5 py-3 font-extrabold text-white hover:opacity-95"
           >
             {overrideOpen ? "Close Override" : "Override Decision"}
           </button>
         </div>
       </div>
+
 
       <div style={{ height: 16 }} />
 
