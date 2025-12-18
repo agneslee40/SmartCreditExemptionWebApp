@@ -49,6 +49,20 @@ const STOP = new Set([
   "course","module","students","student"
 ]);
 
+const GRADE_RANK = {
+  "A+": 13, "A": 12, "A-": 11,
+  "B+": 10, "B": 9, "B-": 8,
+  "C+": 7, "C": 6, "C-": 5,
+  "D+": 4, "D": 3, "D-": 2,
+  "F": 1
+};
+
+function gradeAtLeastC(g) {
+  const key = String(g || "").toUpperCase().trim();
+  return (GRADE_RANK[key] ?? 0) >= GRADE_RANK["C"];
+}
+
+
 function normalizeTokens(text) {
   return String(text || "")
     .toLowerCase()
@@ -368,19 +382,42 @@ export async function runAiAnalysis(application, documents, sunwayCourses = []) 
 
 // keep your existing checks but use similarityOverall instead of hardcode
 
+  const similarityPass = similarityOverall >= 0.8;
+  const gradePass = gradeAtLeastC(applicantGrade);
+  const creditHoursPass =
+    applicantCreditHours != null &&
+    sunwayCreditHours != null &&
+    Number(applicantCreditHours) >= Number(sunwayCreditHours);
     
-  const decision = application.ai_decision ?? "Reject";
+  const decision = (similarityPass && gradePass && creditHoursPass) ? "Approve" : "Reject";
 
   // 5) Checks (adjust as you like)
   const checks = {
-    similarity: { pass: similarity >= 0.8, detected: similarity, required: ">= 0.80" },
-    grade: { pass: !!applicantGrade, detected: applicantGrade, required: "Extracted from transcript" },
-    credit_hours: { pass: applicantCreditHours != null, detected: applicantCreditHours, required: "Extracted from transcript" },
-    sunway_credit_hours: { pass: sunwayCreditHours != null, detected: sunwayCreditHours, required: "From DB (or AI fallback)" }
+    similarity: {
+      pass: similarityPass,
+      detected: similarityOverall,
+      required: ">= 0.80"
+    },
+    grade: {
+      pass: gradePass,
+      detected: applicantGrade,
+      required: ">= C (from transcript)"
+    },
+    credit_hours: {
+      pass: creditHoursPass,
+      detected: applicantCreditHours,
+      required: `>= Sunway (${sunwayCreditHours ?? "?"})`
+    },
+    sunway_credit_hours: {
+      pass: sunwayCreditHours != null,
+      detected: sunwayCreditHours,
+      required: "From DB (or AI fallback)"
+    }
   };
 
+
   return {
-    similarity,
+    similarity: similarityOverall,
     decision,
     gradeDetected: applicantGrade,
     creditHours: applicantCreditHours,

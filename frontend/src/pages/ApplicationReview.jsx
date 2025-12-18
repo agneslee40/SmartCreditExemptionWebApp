@@ -323,11 +323,10 @@ export default function ApplicationReview() {
               </div>
             ) : (
               <div style={{ fontSize: 13, lineHeight: 1.5, marginTop: 8 }}>
-                <div><b>Decision:</b> {ai.decision}</div>
-                <div><b>Similarity:</b> {(ai.similarity * 100).toFixed(0)}%</div>
+                <div><b>Decision:</b> {application?.ai_decision ?? "-"}</div>
+                <div><b>Similarity:</b> {application?.ai_score != null ? `${Math.round(Number(application.ai_score) * 100)}%` : "-"}</div>
                 <div><b>Grade:</b> {ai.grade_detected || "-"}</div>
                 <div><b>Credit Hours:</b> {ai.credit_hours ?? "-"}</div>
-
               
               </div>
             )}
