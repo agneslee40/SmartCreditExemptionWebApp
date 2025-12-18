@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 
-const TABS = ["All", "In Progress", "Credit Exemption", "Credit Transfer", "Completed"];
+const TABS = ["All", "Credit Exemption", "Credit Transfer", "Completed"];
 
 // ---------- tiny inline icons (no extra library needed) ----------
 function IconFilter({ className = "" }) {
@@ -260,8 +260,7 @@ export default function TasksManagement() {
             formerInstitution: r.former_institution || "-",
             requestedSubject: r.requested_subject || "-",
             type: r.type || "-",
-            progress,
-
+           
             // stage statuses (use your real DB fields)
             stageStatus: {
               subjectLecturer: r.sl_status || "Pending",
@@ -302,7 +301,6 @@ export default function TasksManagement() {
     let list = [...apps];
 
     // -------- Tabs --------
-    if (tab === "In Progress") list = list.filter((a) => a.progress === "In Progress");
     if (tab === "Completed") list = list.filter((a) => a.progress === "Completed");
     if (tab === "Credit Exemption") list = list.filter((a) => a.type === "Credit Exemption");
     if (tab === "Credit Transfer") list = list.filter((a) => a.type === "Credit Transfer");
@@ -449,19 +447,18 @@ export default function TasksManagement() {
       <div className="mt-8 rounded-3xl bg-white shadow-[0_14px_40px_rgba(0,0,0,0.08)]">
         <div className="max-h-[62vh] overflow-y-auto rounded-3xl">
           <div className="overflow-x-auto">
-            <table className="min-w-[1750px] w-full text-left">
+            <table className="w-full text-left table-fixed">
               <thead className="text-[#0B0F2A]/70">
                 <tr className="border-b border-black/10">
-                  <th className="px-8 py-4 text-sm font-semibold">ID</th>
-                  <th className="px-6 py-4 text-sm font-semibold">Date</th>
-                  <th className="px-6 py-4 text-sm font-semibold">Student ID, Name</th>
-                  <th className="px-6 py-4 text-sm font-semibold">Academic Session</th>
-                  <th className="px-6 py-4 text-sm font-semibold">Previously Take Qualification</th>
-                  <th className="px-6 py-4 text-sm font-semibold">Former Institution</th>
-                  <th className="px-6 py-4 text-sm font-semibold">Requested Subject</th>
-                  <th className="px-6 py-4 text-sm font-semibold">Type</th>
-                  <th className="px-6 py-4 text-sm font-semibold">Status</th>
-                  <th className="px-6 py-4 text-sm font-semibold">Remarks</th>
+                  <th className="px-8 py-4 text-sm font-semibold w-[70px]">ID</th>
+                  <th className="px-6 py-4 text-sm font-semibold w-[110px]">Date</th>
+                  <th className="px-6 py-4 text-sm font-semibold w-[140px]">Student ID, Name</th>
+                  <th className="px-6 py-4 text-sm font-semibold w-[120px]">Academic Session</th>
+                  <th className="px-6 py-4 text-sm font-semibold w-[220px]">Qualification</th>
+                  <th className="px-6 py-4 text-sm font-semibold w-[140px]">Former Institution</th>
+                  <th className="px-6 py-4 text-sm font-semibold w-[200px]">Requested Subject</th>
+                  <th className="px-6 py-4 text-sm font-semibold w-[140px]">Type</th>
+                  <th className="px-6 py-4 text-sm font-semibold w-[200px]">Status</th>  
                 </tr>
               </thead>
 
@@ -483,15 +480,7 @@ export default function TasksManagement() {
                         </td>
                         <td className="px-6 py-4 text-xs">{a.academicSession}</td>
                         <td className="px-6 py-4 text-xs">
-                          <div
-                            style={{
-                              display: "-webkit-box",
-                              WebkitLineClamp: 2,
-                              WebkitBoxOrient: "vertical",
-                              overflow: "hidden",
-                            }}
-                            title={a.prevQual}
-                          >
+                          <div className="whitespace-normal break-words leading-5" title={a.prevQual}>
                             {a.prevQual}
                           </div>
                         </td>
@@ -510,15 +499,7 @@ export default function TasksManagement() {
                         </td>
 
                         <td className="px-6 py-4 text-xs">
-                          <div
-                            style={{
-                              display: "-webkit-box",
-                              WebkitLineClamp: 2,
-                              WebkitBoxOrient: "vertical",
-                              overflow: "hidden",
-                            }}
-                            title={a.requestedSubject}
-                          >
+                          <div className="whitespace-normal break-words leading-5" title={a.requestedSubject}>
                             {a.requestedSubject}
                           </div>
                         </td>
@@ -529,21 +510,21 @@ export default function TasksManagement() {
                         <td className="px-6 py-4 text-xs">
                           <div className="space-y-2">
                             <div className="flex items-center gap-3">
-                              <div className="w-[92px] text-[11px] text-[#0B0F2A]/70">Subject Lecturer</div>
+                              <div className="w-[43px] text-[11px] text-[#0B0F2A]/70">SL</div>
                               <StatusBadge
                                 label={a.stageStatus.subjectLecturer}
                                 tone={toneForStatus(a.stageStatus.subjectLecturer)}
                               />
                             </div>
                             <div className="flex items-center gap-3">
-                              <div className="w-[92px] text-[11px] text-[#0B0F2A]/70">Programme Leader</div>
+                              <div className="w-[42px] text-[11px] text-[#0B0F2A]/70">PL</div>
                               <StatusBadge
                                 label={a.stageStatus.programmeLeader}
                                 tone={toneForStatus(a.stageStatus.programmeLeader)}
                               />
                             </div>
                             <div className="flex items-center gap-3">
-                              <div className="w-[92px] text-[11px] text-[#0B0F2A]/70">Registry</div>
+                              <div className="w-[42px] text-[11px] text-[#0B0F2A]/70">Registry</div>
                               <StatusBadge
                                 label={a.stageStatus.registry}
                                 tone={toneForStatus(a.stageStatus.registry)}
@@ -568,30 +549,14 @@ export default function TasksManagement() {
                           </div>
                         </td>
 
-                        {/* Remarks column */}
-                        <td className="px-6 py-6 text-sm">
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="text-[#0B0F2A]/80">{remarksPreview}</div>
-                            <button
-                              onClick={() => openEditRemarks(a.id)}
-                              className="rounded-lg p-2 text-[#0B0F2A] hover:bg-black/5"
-                              title="Edit remarks"
-                            >
-                              <IconPencil className="h-5 w-5" />
-                            </button>
-                          </div>
-                        </td>
+                        
                       </tr>
 
                       {/* Row 2: action strip (matches your figma “pills + buttons”) */}
                       <tr className="border-b border-black/10">
-                        <td colSpan={10} className="px-8 py-4">
+                        <td colSpan={9} className="px-8 py-4">
                           <div className="flex items-center gap-4">
-                            {/* In Progress pill (not clickable) */}
-                            <Pill className="bg-[#E9E2B2] text-[#0B0F2A]">
-                              {a.progress}
-                            </Pill>
-
+                            
                             {/* Team pill (clickable) */}
                             <button
                               onClick={() => openTeamModal(a.id)}
