@@ -104,6 +104,12 @@ export default function ApplicationReview() {
         const data = res.data;
         setPayload(data);
 
+        //debug
+        console.log("review payload", data);
+        console.log("data.ai_analysis", data.ai_analysis);
+        console.log("data.application.ai_score", data.application.ai_score);
+        //debugend
+
         const firstApplicant = data?.applicant_documents?.[0];
         setSelectedApplicantDocId(firstApplicant?.id ?? null);
 

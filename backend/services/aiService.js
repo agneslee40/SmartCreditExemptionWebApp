@@ -1,6 +1,8 @@
 // backend/services/aiService.js
 import fs from "fs/promises";
 import path from "path";
+import axios from "axios";
+
 
 // ✅ Use pdfjs-dist directly (no pdf-parse)
 import * as pdfjs from "pdfjs-dist/legacy/build/pdf.mjs";
@@ -345,15 +347,55 @@ export async function runAiAnalysis(application, documents, sunwayCourses = []) 
     || nonTranscriptDocs[0]
     || documents?.[0];
 
+  const applicantDocPath = applicantContentDoc?.file_path || null;
+
   const applicantContentText = applicantContentDoc
     ? await extractPdfText(applicantContentDoc.file_path)
     : "";
 
   // 2) compare against EACH requested sunway syllabus
   const perCourse = [];
+
   for (const c of (sunwayCourses || [])) {
-    const sunAbs = c.syllabus_abs_path; // <- provided by application.js
-    const sunText = sunAbs ? await extractPdfText(sunAbs) : "";
+
+
+    const swFilename = String(c.syllabus_pdf_path || "").split("/").pop();
+    const sunwaySyllabusPath = swFilename
+      ? path.join(process.cwd(), "backend", "uploads", "sunway", swFilename)
+      : null;
+
+    if (!transcriptPath || !applicantDocPath || !sunwaySyllabusPath) {
+      // fallback to old logic or push 0
+    } else {
+      const out = await analyzeExemptionWithGeminiFiles({
+        transcriptPath,
+        applicantDocPath,
+        sunwaySyllabusPath,
+        prevSubjectName: application.prev_subject_name,
+        requestedSubjectName: c.subject_name,
+        requestedSubjectCode: c.subject_code,
+      });
+
+      perCourse.push({
+        sunway: `${c.subject_code} ${c.subject_name}`,
+        score: Number(out.similarity) || 0,
+        method: "gemini_files",
+      });
+
+      // set grade/credit once (first non-null)
+      if (applicantGrade == null && out.grade_detected != null) applicantGrade = out.grade_detected;
+      if (applicantCreditHours == null && out.credit_hours != null) applicantCreditHours = out.credit_hours;
+
+      // store evidence into reasoning
+      reasoning.similarity_evidence_by_course = reasoning.similarity_evidence_by_course || {};
+      reasoning.similarity_evidence_by_course[c.subject_code] = out.evidence;
+
+      continue; // skip old text-based similarity for this course
+    }
+
+
+    const sunAbs = path.join(process.cwd(), "backend", "uploads", "sunway", swFilename);
+    const sunText = swFilename ? await extractPdfText(sunAbs) : "";
 
     const { score, method } = await hybridSimilarity({
       applicantText: applicantContentText,
@@ -437,6 +479,16 @@ export async function runAiAnalysis(application, documents, sunwayCourses = []) 
   };
 }
 
+async function pdfPathToInlinePart(absPath) {
+  const buf = await fs.readFile(absPath);
+  return {
+    inlineData: {
+      mimeType: "application/pdf",
+      data: buf.toString("base64"),
+    },
+  };
+}
+
 
 // ---- Gemini JSON helper (FREE tier friendly) ----
 export async function callGeminiJSON({ prompt, jsonSchema }) {
@@ -484,6 +536,107 @@ export async function callGeminiJSON({ prompt, jsonSchema }) {
 
   return parsed;
 }
+
+export async function callGeminiJSONWithParts({ parts, model = "gemini-2.5-flash" }) {
+  if (!process.env.GEMINI_API_KEY) {
+    throw new Error("Missing GEMINI_API_KEY in environment variables.");
+  }
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`;
+
+  const payload = {
+    contents: [{ role: "user", parts }],
+    generationConfig: {
+      temperature: 0.1,
+      responseMimeType: "application/json",
+    },
+  };
+
+  const resp = await axios.post(url, payload, {
+    headers: { "Content-Type": "application/json" },
+    timeout: 60000,
+  });
+
+  const text =
+    resp?.data?.candidates?.[0]?.content?.parts?.map((p) => p.text).join("") ?? "";
+
+  if (!text) {
+    throw new Error("Gemini returned empty response text.");
+  }
+
+  // same “strip code fences” defense
+  const cleaned = text.replace(/```json|```/g, "").trim();
+  return JSON.parse(cleaned);
+}
+
+async function analyzeExemptionWithGeminiFiles({
+  transcriptPath,
+  applicantDocPath,
+  sunwaySyllabusPath,
+  prevSubjectName,
+  requestedSubjectName,
+  requestedSubjectCode,
+}) {
+  const prompt = `
+You are evaluating a university credit exemption request.
+
+You will receive some PDFs that include:
+1) Student transcript (contains grades and completed subjects)
+2) Student's previous institution course document (syllabus/outline/assessment info)
+3) Sunway University subject syllabus (the target course requested by student for credit exemption)
+
+Task:
+- Identify the student's grade for the previous completed subject "${prevSubjectName}" from the transcript.
+- Identify the credit hours for the previous completed subject (from transcript if possible; otherwise from the previous course PDF).
+- Identify the credit hours for the Sunway subject "${requestedSubjectName}" (${requestedSubjectCode}) from the Sunway syllabus PDF.
+- Compare the previous completed course content (PDF #2) against the Sunway syllabus (PDF #3) and produce:
+  - similarity: a number from 0 to 1
+  - evidence aligned to the similarity score: section_scores + top_pairs of excerpts
+
+Return STRICT JSON ONLY in this schema:
+{
+  "grade_detected": string|null,
+  "credit_hours": number|null,
+  "similarity": number,
+  "decision": "Approve"|"Reject",
+  "evidence": {
+    "section_scores": [
+      {"section": string, "avg_score": number, "matches": number}
+    ],
+    "matched_pairs": [
+      {
+        "section": string,
+        "score": number,
+        "applicant_excerpt": string,
+        "sunway_excerpt": string,
+        "why_match": string
+      }
+    ]
+  }
+}
+
+Rules for evidence:
+-Allowed sections ONLY: Learning Outcomes, Assessment, Synopsis, Prerequisites, Topics, Other.
+-evidence.section_scores must include ALL 6 sections (use score 0 and matches 0 if no match).
+-evidence.section_scores[i].matches MUST equal the number of evidence.matched_pairs where section matches.
+-evidence.matched_pairs should include up to 12 total rows (prioritize strongest matches), but must still be consistent with matches counts (so if matches says 2, provide 2 rows for that section).
+
+Decision rule:
+- Approve only if similarity >= 0.80 AND grade_detected is >= C AND credit_hours >= detected sunway credit hours.
+- Otherwise Reject.
+If grade/credit cannot be found, set them null and still compute similarity + evidence.
+  `.trim();
+
+  const parts = [
+    { text: prompt },
+    await pdfPathToInlinePart(transcriptPath),
+    await pdfPathToInlinePart(applicantDocPath),
+    await pdfPathToInlinePart(sunwaySyllabusPath),
+  ];
+
+  return await callGeminiJSONWithParts({ parts });
+}
+
 
 export async function extractApplicantCourseResultWithAI({ transcriptText, targetCourseName }) {
   const trimmed = transcriptText.slice(0, 35000); // keep token cost small
