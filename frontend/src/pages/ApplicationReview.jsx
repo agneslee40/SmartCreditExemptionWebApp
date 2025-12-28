@@ -55,10 +55,19 @@ const GRADE_RANK = {
   "D+": 4, "D": 3, "D-": 2,
   "F": 1
 };
+
+function normalizeGrade(g) {
+  return String(g || "")
+    .toUpperCase()
+    .replace(/–/g, "-")
+    .replace(/\s+/g, "");
+}
+
 function gradeAtLeastC(g) {
-  const key = String(g || "").toUpperCase().trim();
+  const key = normalizeGrade(g);
   return (GRADE_RANK[key] ?? 0) >= GRADE_RANK["C"];
 }
+
 
 export default function ApplicationReview() {
   const { id } = useParams();
@@ -160,6 +169,12 @@ export default function ApplicationReview() {
   const selectedSunway = useMemo(() => {
     return sunwayCourses.find(c => c.subject_code === selectedSunwayCode) || null;
   }, [sunwayCourses, selectedSunwayCode]);
+
+  const selectedCourseEvidence = useMemo(() => {
+    const code = selectedSunwayCode;
+    const evByCourse = payload?.ai_analysis?.reasoning?.similarity_evidence_by_course || {};
+    return code ? (evByCourse[code] || null) : null;
+  }, [payload, selectedSunwayCode]);
 
   // 3) Live rule evaluation (override inputs)
   const checks = useMemo(() => {
@@ -649,14 +664,21 @@ export default function ApplicationReview() {
         {/* Dummy section scores + weights (for demo) */}
         {(() => {
           
-          const sectionRows = [
-            { section: "Learning Outcomes", score: 0.78, matches: 2 },
-            { section: "Assessment", score: 0.62, matches: 1 },
-            { section: "Synopsis", score: 0.55, matches: 0 },
-            { section: "Prerequisites", score: 0.0, matches: 0 },
-            { section: "Topics", score: 0.71, matches: 1 },
-            { section: "Other", score: 0.2, matches: 0 },
-          ];
+          const sectionRows =
+            selectedCourseEvidence?.section_scores?.map(s => ({
+              section: s.section,
+              score: Number(s.score ?? 0),
+              matches: Number(s.matches ?? 0),
+            })) || [
+              // fallback: keep empty structure so UI doesn't crash
+              { section: "Learning Outcomes", score: 0, matches: 0 },
+              { section: "Assessment", score: 0, matches: 0 },
+              { section: "Synopsis", score: 0, matches: 0 },
+              { section: "Prerequisites", score: 0, matches: 0 },
+              { section: "Topics", score: 0, matches: 0 },
+              { section: "Other", score: 0, matches: 0 },
+            ];
+
 
           // weights must sum to 1.0
           const weights = {
@@ -689,7 +711,7 @@ export default function ApplicationReview() {
               >
                 <div>
                   <div style={{ fontWeight: 900, fontSize: 16 }}>
-                    Overall Similarity: 62%
+                    Overall Similarity: {Math.round(overall * 100)}%
                   </div>
                   <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
                     Weighted by section importance.
@@ -707,7 +729,12 @@ export default function ApplicationReview() {
               
 
               {/* pass sectionRows to the table below */}
+              
+              
               <div style={{ marginTop: 16 }}>
+                
+                
+                
                 <div
                   style={{
                     display: "grid",
@@ -751,7 +778,9 @@ export default function ApplicationReview() {
                             {Math.round(r.score * 100)}% × {Math.round(w * 100)}% = {Math.round(contrib * 100)}%
                           </div>
                           <div style={{ color: "#666" }}>
-                            {r.matches === 0 ? "No match found" : `${r.matches} matched excerpts`}
+                            {r.matches === 0
+                              ? "No match found"
+                              : `${r.matches} matched excerpt${r.matches === 1 ? "" : "s"}`}
                           </div>
                         </>
                       );
@@ -767,7 +796,8 @@ export default function ApplicationReview() {
   
 
         {/* All matched excerpts (Dummy) */}
-        <div style={{ marginTop: 18 }}>
+        <div style={{ marginTop: 22 }}>
+          <div style={{ height: 1, background: "#eee", margin: "6px 0 18px" }} />
           <div style={{ fontWeight: 900, fontSize: 16, marginBottom: 10 }}>
             All Matched Excerpts 
           </div>
@@ -790,39 +820,14 @@ export default function ApplicationReview() {
             <div>Why it matches</div>
           </div>
 
-          {[
-            {
-              section: "Learning Outcomes",
-              app: "Explain diode/transistor operations and apply circuit analysis methods to solve electronics problems.",
-              sun: "Describe characteristics of discrete components and analyze rectifier/amplifier circuit operations.",
-              why: "Same intent: component behaviour + circuit analysis (semantic match)."
-            },
-            {
-              section: "Learning Outcomes",
-              app: "Apply fundamental circuit laws (KCL/KVL) to analyse simple electronic circuits.",
-              sun: "Analyse the operations of rectifier circuits using circuit principles.",
-              why: "Both evaluate circuit analysis skills (different wording)."
-            },
-            {
-              section: "Assessment",
-              app: "Assessment includes quizzes, lab exercises, and final examination.",
-              sun: "Assessment comprises quizzes, laboratory practicals, and a final exam.",
-              why: "Same assessment structure."
-            },
-            {
-              section: "Topics",
-              app: "Topics include diodes, BJTs, and basic amplifier circuits.",
-              sun: "Topics include diodes, BJTs, FETs, and amplifiers.",
-              why: "Overlapping key topic list."
-            },
-          ].map((row, idx) => (
+          {(selectedCourseEvidence?.matched_pairs || []).map((row, idx) => (
             <div
               key={idx}
               style={{
                 display: "grid",
                 gridTemplateColumns: "180px 1fr 1fr 1fr",
                 gap: 12,
-                padding: "12px 0",
+                padding: "16px 0",
                 borderBottom: "1px solid #f2f2f2",
                 fontSize: 13,
                 alignItems: "start",
@@ -831,15 +836,15 @@ export default function ApplicationReview() {
               <div style={{ fontWeight: 800 }}>{row.section}</div>
 
               <div style={{ background: "#F5F5F5", borderRadius: 12, padding: 10, lineHeight: 1.4 }}>
-                {row.app}
+                {row.applicant_excerpt}
               </div>
 
               <div style={{ background: "#F5F5F5", borderRadius: 12, padding: 10, lineHeight: 1.4 }}>
-                {row.sun}
+                {row.sunway_excerpt}
               </div>
 
               <div style={{ color: "#555", lineHeight: 1.4 }}>
-                {row.why}
+                {row.why_match}
               </div>
             </div>
           ))}
