@@ -365,6 +365,14 @@ export async function runAiAnalysis(application, documents, sunwayCourses = []) 
       : null;
 
     if (!transcriptPath || !applicantDocPath || !sunwaySyllabusPath) {
+      perCourse.push({
+      sunway: `${c.subject_code} ${c.subject_name}`,
+      score: 0,
+      method: "missing_paths",
+    });
+    continue;
+      
+      
       // fallback to old logic or push 0
     } else {
       const out = await analyzeExemptionWithGeminiFiles({
@@ -377,38 +385,22 @@ export async function runAiAnalysis(application, documents, sunwayCourses = []) 
       });
 
       perCourse.push({
-        sunway: `${c.subject_code} ${c.subject_name}`,
-        score: Number(out.similarity) || 0,
-        method: "gemini_files",
-      });
+      sunway: `${c.subject_code} ${c.subject_name}`,
+      score: Number(out.similarity) || 0,
+      method: "gemini_files",
+    });
 
-      // set grade/credit once (first non-null)
-      if (applicantGrade == null && out.grade_detected != null) applicantGrade = out.grade_detected;
-      if (applicantCreditHours == null && out.credit_hours != null) applicantCreditHours = out.credit_hours;
+    if (applicantGrade == null && out.grade_detected != null) applicantGrade = out.grade_detected;
+    if (applicantCreditHours == null && out.credit_hours != null) applicantCreditHours = out.credit_hours;
 
-      // store evidence into reasoning
-      reasoning.similarity_evidence_by_course = reasoning.similarity_evidence_by_course || {};
-      reasoning.similarity_evidence_by_course[c.subject_code] = out.evidence;
+    reasoning.similarity_evidence_by_course = reasoning.similarity_evidence_by_course || {};
+    reasoning.similarity_evidence_by_course[c.subject_code] = out.evidence;
 
-      continue; // skip old text-based similarity for this course
+    continue; // skip any old code (and continue next course)
+
     }
 
 
-    const sunAbs = path.join(process.cwd(), "backend", "uploads", "sunway", swFilename);
-    const sunText = swFilename ? await extractPdfText(sunAbs) : "";
-
-    const { score, method } = await hybridSimilarity({
-      applicantText: applicantContentText,
-      sunwayText: sunText
-    });
-
-    perCourse.push({
-      subject_code: c.subject_code,
-      subject_name: c.subject_name,
-      score,
-      method,
-      applicant_doc_used: { id: applicantContentDoc?.id, file_name: applicantContentDoc?.file_name }
-    });
   }
 
   // 3) overall similarity (for multi requested subjects)
@@ -465,6 +457,7 @@ export async function runAiAnalysis(application, documents, sunwayCourses = []) 
     creditHours: applicantCreditHours,
     markDetected: application.mark_detected ?? null,
     reasoning: {
+      ...reasoning,
       summary: "Grade & credit hours extracted from transcript using Gemini JSON extraction.",
       checks,
       target_course: targetCourseName,
@@ -554,7 +547,7 @@ export async function callGeminiJSONWithParts({ parts, model = "gemini-2.5-flash
 
   const resp = await axios.post(url, payload, {
     headers: { "Content-Type": "application/json" },
-    timeout: 60000,
+    timeout: 180000,
   });
 
   const text =
@@ -591,7 +584,7 @@ Task:
 - Identify the credit hours for the Sunway subject "${requestedSubjectName}" (${requestedSubjectCode}) from the Sunway syllabus PDF.
 - Compare the previous completed course content (PDF #2) against the Sunway syllabus (PDF #3) and produce:
   - similarity: a number from 0 to 1
-  - evidence aligned to the similarity score: section_scores + top_pairs of excerpts
+  - evidence aligned to the similarity score: section_scores + matched_pairs of excerpts
 
 Return STRICT JSON ONLY in this schema:
 {
@@ -601,7 +594,7 @@ Return STRICT JSON ONLY in this schema:
   "decision": "Approve"|"Reject",
   "evidence": {
     "section_scores": [
-      {"section": string, "avg_score": number, "matches": number}
+      {"section": string, "score": number, "matches": number}
     ],
     "matched_pairs": [
       {
