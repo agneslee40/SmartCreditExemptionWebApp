@@ -47,6 +47,7 @@ function safeDate(d) {
 
 
 
+
 // Grade ranking helper (>= C)
 const GRADE_RANK = {
   "A+": 13, "A": 12, "A-": 11,
@@ -95,10 +96,36 @@ export default function ApplicationReview() {
   const [finalCreditHours, setFinalCreditHours] = useState("");
   const [overrideReason, setOverrideReason] = useState("");
 
+
+  // --- Confirm/Summary modal (Accept AI / Override) ---
+  const [actionModalOpen, setActionModalOpen] = useState(false);
+  const [actionMode, setActionMode] = useState(null); // "accept" | "override"
+  const [actionStep, setActionStep] = useState("confirm"); // "confirm" | "summary"
+  const [actionSubmitting, setActionSubmitting] = useState(false);
+  const [actionResult, setActionResult] = useState(null); // backend response (updated application, etc.)
+  const [actionError, setActionError] = useState("");
+
   // Evidence
   const [eviLoading, setEviLoading] = useState(false);
   const [eviError, setEviError] = useState("");
   const [evidence, setEvidence] = useState(null);
+
+  function openConfirm(mode) {
+    setActionMode(mode);
+    setActionStep("confirm");
+    setActionResult(null);
+    setActionError("");
+    setActionModalOpen(true);
+  }
+
+  function closeActionModal() {
+    setActionModalOpen(false);
+    setActionMode(null);
+    setActionStep("confirm");
+    setActionResult(null);
+    setActionError("");
+    setActionSubmitting(false);
+  }
 
   // 1) Load review payload
   useEffect(() => {
@@ -191,80 +218,55 @@ export default function ApplicationReview() {
 
   const allPass = checks.similarityPass && checks.gradePass && checks.creditHoursPass;
 
-  // 4) Fetch similarity evidence whenever selection changes
-  useEffect(() => {
-    let mounted = true;
+  
 
-    async function loadEvidence() {
-      setEviError("");
-      setEvidence(null);
 
-      if (!selectedApplicantDocId || !selectedSunwayCode) return;
+  async function confirmYes() {
+    setActionSubmitting(true);
+    setActionError("");
 
-      setEviLoading(true);
-      try {
-        const res = await api.get(
-          `/applications/${id}/similarity-evidence`,
-          { params: { docId: selectedApplicantDocId, sunwayCode: selectedSunwayCode } }
-        );
-        if (!mounted) return;
-        setEvidence(res.data);
-      } catch (e) {
-        console.error(e);
-        if (!mounted) return;
-        setEviError("Failed to load similarity evidence. Check backend console.");
-      } finally {
-        if (mounted) setEviLoading(false);
+    try {
+      let res;
+
+      if (actionMode === "accept") {
+        res = await api.post(`/applications/${id}/override`, {
+          accept_ai: true,
+        });
       }
-    }
 
-    loadEvidence();
-    return () => { mounted = false; };
-  }, [id, selectedApplicantDocId, selectedSunwayCode]);
+      if (actionMode === "override") {
+        // Use the exact values user is seeing in the override panel
+        res = await api.post(`/applications/${id}/override`, {
+          final_similarity: Number(finalSimilarity) / 100,
+          final_grade: finalGrade,
+          final_credit_hours: Number(finalCreditHours),
+          override_reason: overrideReason,
+          final_decision: allPass ? "Approve" : "Reject",
+          sunway_subject_code: selectedSunwayCode,
+        });
+      }
 
-  async function acceptAi() {
-    try {
-      await api.post(`/applications/${id}/override`, {
-        accept_ai: true
-        // optional: record which syllabus they were viewing
-        //sunway_subject_code: selectedSunwayCode
-      });
-      alert("AI recommendation accepted ✅");
-      const res = await api.get(`/applications/${id}/review`);
-      setPayload(res.data);
+      setActionResult(res.data);
+      setActionStep("summary");
+
     } catch (e) {
       console.error(e);
-      alert("Failed to accept AI ❌ (check backend route)");
+      setActionError(
+        e?.response?.data?.error || "Action failed. Please check backend / console."
+      );
+    } finally {
+      setActionSubmitting(false);
     }
   }
 
-  async function saveOverride() {
-    if (!overrideReason.trim()) {
-      alert("Please enter an override reason (required).");
-      return;
-    }
-
-    try {
-      await api.post(`/applications/${id}/override`, {
-        final_similarity: Number(finalSimilarity) / 100,
-        final_grade: finalGrade,
-        final_credit_hours: Number(finalCreditHours),
-        override_reason: overrideReason,
-        final_decision: allPass ? "Approve" : "Reject",
-        sunway_subject_code: selectedSunwayCode
-      });
-
-      alert("Override saved ✅");
-
-      const res = await api.get(`/applications/${id}/review`);
-      setPayload(res.data);
-      setOverrideOpen(false);
-      setOverrideReason("");
-    } catch (e) {
-      console.error(e);
-      alert("Failed to save override ❌ (check backend route / console)");
-    }
+  async function summaryOk() {
+    // Optional: refresh payload so if user stays, UI is updated.
+    // But your requirement says: exit review page immediately.
+    closeActionModal();
+    goBack(); // your existing logic already returns to previous page (dashboard or tasks)【turn2file9†ApplicationReview.jsx†L76-L79】
   }
+
+
 
   // 5) UI
   return (
@@ -312,7 +314,7 @@ export default function ApplicationReview() {
         {/* Right: action buttons */}
         <div className="mt-14 flex items-center gap-3">
           <button
-            onClick={acceptAi}
+            onClick={() => openConfirm("accept")}
             className="rounded-xl border border-black/10 bg-white px-5 py-3 font-extrabold text-[#0B0F2A] hover:bg-black/5 disabled:opacity-50"
             disabled={!ai}
             title={!ai ? "No AI analysis yet" : ""}
@@ -458,7 +460,13 @@ export default function ApplicationReview() {
                     fontWeight: 900,
                     cursor: "pointer"
                   }}
-                  onClick={saveOverride}
+                  onClick={() => {
+                    if (!overrideReason.trim()) {
+                      alert("Please enter an override reason (required).");
+                      return;
+                    }
+                    openConfirm("override");
+                  }}
                 >
                   Save Override
                 </button>
@@ -491,123 +499,6 @@ export default function ApplicationReview() {
               </div>
             )}
           </div>
-
-{/* 
-          //Similarity Evidence
-          <div style={cardStyle}>
-            <div style={cardTitle}>Similarity Evidence</div>
-            <div style={{ fontSize: 12, color: "#666", marginTop: 6 }}>
-              Using all applicant supporting documents (excluding transcript) vs selected Sunway syllabus.
-            </div>
-
-            {loading ? (
-              <div style={{ fontSize: 13, color: "#666", marginTop: 10 }}>Loading…</div>
-            ) : eviLoading ? (
-              <div style={{ fontSize: 13, color: "#666", marginTop: 10 }}>Extracting & matching text…</div>
-            ) : eviError ? (
-              <div style={{ fontSize: 13, color: "crimson", marginTop: 10 }}>{eviError}</div>
-            ) : !evidence?.evidence ? (
-              <div style={{ fontSize: 13, color: "#666", marginTop: 10 }}>
-                Select an applicant doc + Sunway syllabus to generate evidence.
-              </div>
-            ) : (
-              <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 10 }}>
-                //section scores
-                <div>
-                  <div style={{ fontWeight: 800, marginBottom: 6 }}>Sections</div>
-
-                  <div style={{
-                    display: "grid",
-                    gridTemplateColumns: "160px 90px 1fr",
-                    gap: 10,
-                    fontSize: 12,
-                    fontWeight: 800,
-                    color: "#444",
-                    paddingBottom: 6,
-                    borderBottom: "1px solid #eee"
-                  }}>
-                    <div>Section</div>
-                    <div>Score</div>
-                    <div>Matches (semantic)</div>
-                  </div>
-
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>
-                    {(evidence.evidence.sections || []).map((s) => (
-                      <div key={s.section} style={{
-                        display: "grid",
-                        gridTemplateColumns: "160px 90px 1fr",
-                        gap: 10,
-                        border: "1px solid #eee",
-                        borderRadius: 12,
-                        padding: 10,
-                        background: "#fff"
-                      }}>
-                        <div style={{ fontWeight: 900 }}>{s.section}</div>
-                        <div style={{ fontWeight: 900 }}>{Math.round((s.similarity || 0) * 100)}%</div>
-
-                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                          {(s.matches || []).length === 0 ? (
-                            <div style={{ fontSize: 12, color: "#777" }}>No match found (0%)</div>
-                          ) : (
-                            (s.matches || []).slice(0, 3).map((m, idx) => (
-                              <div key={idx} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                                <div>
-                                  <div style={smallLabel}>Applicant ({m.app_doc})</div>
-                                  <div style={excerptBox}>{m.app_excerpt}</div>
-                                </div>
-                                <div>
-                                  <div style={smallLabel}>Sunway ({m.sunway_doc})</div>
-                                  <div style={excerptBox}>{m.sunway_excerpt}</div>
-                                </div>
-                                <div style={{ gridColumn: "1 / span 2", fontSize: 12, color: "#555" }}>
-                                  <b>Why:</b> {m.why_match}
-                                </div>
-                              </div>
-                            ))
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-
-                //top pairs
-                <div>
-                  <div style={{ fontWeight: 800, marginBottom: 6 }}>Top Matched Excerpts</div>
-                  {(evidence.evidence.top_pairs || []).map((p, idx) => (
-                    <div key={idx} style={evidenceCard}>
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                        <div style={{ fontWeight: 800 }}>
-                          Match #{idx + 1} • {(p.score * 100).toFixed(0)}%
-                        </div>
-                        <div style={{ fontSize: 12, color: "#666", fontWeight: 700 }}>
-                          {p.section}
-                        </div>
-                      </div>
-
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 8 }}>
-                        <div>
-                          <div style={smallLabel}>Applicant</div>
-                          <div style={excerptBox}>{p.applicant_excerpt}</div>
-                        </div>
-                        <div>
-                          <div style={smallLabel}>Sunway</div>
-                          <div style={excerptBox}>{p.sunway_excerpt}</div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <div style={{ fontSize: 12, color: "#666" }}>
-                  *Evidence and section similarity are generated by Gemini using semantic comparison across applicant supporting documents and the Sunway syllabus.
-                </div>
-
-              </div>
-            )}
-          </div>
-*/}
 
           
         </div>
@@ -731,10 +622,20 @@ export default function ApplicationReview() {
               {/* pass sectionRows to the table below */}
               
               
-              <div style={{ marginTop: 16 }}>
-                
-                
-                
+              {/* Section breakdown card */}
+              <div
+                style={{
+                  marginTop: 16,
+                  border: "1px solid #eee",
+                  borderRadius: 14,
+                  background: "#fff",
+                  padding: 12,
+                }}
+              >
+                <div style={{ fontWeight: 900, fontSize: 14, marginBottom: 10 }}>
+                  Section Breakdown
+                </div>
+
                 <div
                   style={{
                     display: "grid",
@@ -785,10 +686,10 @@ export default function ApplicationReview() {
                         </>
                       );
                     })()}
-
                   </div>
                 ))}
               </div>
+
             </>
           );
         })()}
@@ -856,6 +757,94 @@ export default function ApplicationReview() {
           using semantic comparison (synonyms/meaning-based matches).
         </div>
       </div>
+      {actionModalOpen && (
+        <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-xl rounded-3xl bg-white shadow-2xl border border-black/10">
+            <div className="px-7 py-6">
+              <div className="text-2xl font-extrabold text-[#0B0F2A]">
+                {actionStep === "confirm"
+                  ? (actionMode === "accept" ? "Confirm Accept AI Recommendation" : "Confirm Override Decision")
+                  : "Decision Submitted"}
+              </div>
+
+              <div className="mt-3 text-sm text-[#0B0F2A]/70 leading-6">
+                {actionStep === "confirm" && actionMode === "accept" && (
+                  <>Are you sure you want to accept the AI recommendation?</>
+                )}
+
+                {actionStep === "confirm" && actionMode === "override" && (
+                  <>
+                    Are you sure you want to override with the override details below?
+                    <div className="mt-4 rounded-2xl bg-[#EFEFEF] p-4">
+                      <div className="text-sm font-extrabold text-[#0B0F2A]">Override Summary</div>
+                      <div className="mt-2 space-y-1 text-sm text-[#0B0F2A]/80">
+                        <div><b>Final Similarity:</b> {finalSimilarity || "-"}%</div>
+                        <div><b>Final Grade:</b> {finalGrade || "-"}</div>
+                        <div><b>Final Credit Hours:</b> {finalCreditHours || "-"}</div>
+                        <div><b>Final Decision:</b> {allPass ? "Approve" : "Reject"}</div>
+                        <div className="pt-2"><b>Reason:</b> {overrideReason || "-"}</div>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {actionStep === "summary" && (
+                  <>
+                    Your decision has been recorded successfully.
+                    <div className="mt-4 rounded-2xl bg-[#EFEFEF] p-4">
+                      <div className="text-sm font-extrabold text-[#0B0F2A]">Final Decision Summary</div>
+                      <div className="mt-2 space-y-1 text-sm text-[#0B0F2A]/80">
+                        <div><b>Case:</b> {application?.application_id || "-"}</div>
+                        <div><b>Mode:</b> {actionResult?.mode === "accept_ai" ? "Accepted AI Recommendation" : "Manual Override"}</div>
+                        <div><b>Final Decision:</b> {actionResult?.application?.final_decision || "-"}</div>
+                        <div><b>Final Similarity:</b> {actionResult?.application?.final_similarity != null ? `${Math.round(actionResult.application.final_similarity * 100)}%` : "-"}</div>
+                        <div><b>Final Grade:</b> {actionResult?.application?.final_grade || "-"}</div>
+                        <div><b>Final Credit Hours:</b> {actionResult?.application?.final_credit_hours ?? "-"}</div>
+                        <div><b>SL Status:</b> {actionResult?.application?.sl_status || "-"}</div>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {actionError && (
+                  <div className="mt-3 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 border border-red-200">
+                    {actionError}
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-6 flex items-center justify-end gap-3">
+                {actionStep === "confirm" ? (
+                  <>
+                    <button
+                      onClick={closeActionModal}
+                      className="rounded-xl border border-black/10 bg-white px-5 py-3 font-extrabold text-[#0B0F2A] hover:bg-black/5"
+                      disabled={actionSubmitting}
+                    >
+                      Cancel
+                    </button>
+
+                    <button
+                      onClick={confirmYes}
+                      className="rounded-xl bg-[#0B0F2A] px-6 py-3 font-extrabold text-white hover:opacity-95 disabled:opacity-50"
+                      disabled={actionSubmitting}
+                    >
+                      {actionSubmitting ? "Saving..." : "Yes"}
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={summaryOk}
+                    className="rounded-xl bg-[#0B0F2A] px-6 py-3 font-extrabold text-white hover:opacity-95"
+                  >
+                    OK
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
