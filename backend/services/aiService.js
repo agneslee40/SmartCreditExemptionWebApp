@@ -368,11 +368,9 @@ export async function runAiAnalysis(application, documents, sunwayCourses = []) 
     ? await extractPdfText(applicantContentDoc.file_path)
     : "";
 
-  console.log("[AI] target prev_subject_name:", application?.prev_subject_name);
-  console.log("[AI] selected applicant doc:", applicantContentDoc?.file_name, "score:", bestScore);
-  
     // 2) compare against EACH requested sunway syllabus
   const perCourse = [];
+  
 
   for (const c of (sunwayCourses || [])) {
 
@@ -402,10 +400,13 @@ export async function runAiAnalysis(application, documents, sunwayCourses = []) 
         requestedSubjectCode: c.subject_code,
       });
 
+      const sectionScores = out?.evidence?.section_scores || [];
+      const computedOverall = computeWeightedOverall(sectionScores);
+
       perCourse.push({
       sunway: `${c.subject_code} ${c.subject_name}`,
-      score: Number(out.similarity) || 0,
-      method: "gemini_files",
+      score: computedOverall,
+      method: "gemini_weighted_sections",
     });
 
     const cleanedGrade = String(out.grade_detected || "")
@@ -419,6 +420,9 @@ export async function runAiAnalysis(application, documents, sunwayCourses = []) 
     if (normalizedOutGrade) applicantGrade = normalizedOutGrade;
 
     if (applicantCreditHours == null && out.credit_hours != null) applicantCreditHours = out.credit_hours;
+
+    reasoning.raw_similarity_by_course = reasoning.raw_similarity_by_course || {};
+    reasoning.raw_similarity_by_course[c.subject_code] = Number(out.similarity) || 0;
 
     reasoning.similarity_evidence_by_course = reasoning.similarity_evidence_by_course || {};
     reasoning.similarity_evidence_by_course[c.subject_code] = out.evidence;
@@ -531,6 +535,32 @@ function tokenOverlapScore(a, b) {
 
   // normalize by shorter string to avoid bias
   return overlap / Math.min(A.size, B.size);
+}
+
+const SECTION_WEIGHTS = {
+  "Learning Outcomes": 0.35,
+  "Assessment": 0.20,
+  "Synopsis": 0.15,
+  "Prerequisites": 0.05,
+  "Topics": 0.20,
+  "Other": 0.05,
+};
+
+function computeWeightedOverall(sectionScores) {
+  if (!Array.isArray(sectionScores)) return 0;
+
+  let sum = 0;
+  for (const row of sectionScores) {
+    const section = row?.section;
+    const w = SECTION_WEIGHTS[section] ?? 0;
+    const s = Number(row?.score ?? row?.avg_score ?? 0); // support either key
+    sum += s * w;
+  }
+
+  // clamp 0..1
+  if (sum < 0) return 0;
+  if (sum > 1) return 1;
+  return Number(sum.toFixed(3)); // keep stable rounding
 }
 
 // ---- Gemini JSON helper (FREE tier friendly) ----
