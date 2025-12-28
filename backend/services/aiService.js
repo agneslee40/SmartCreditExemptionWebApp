@@ -59,8 +59,16 @@ const GRADE_RANK = {
   "F": 1
 };
 
+function normalizeGrade(g) {
+  return String(g || "")
+    .toUpperCase()
+    .replace(/–/g, "-")       // en-dash -> hyphen
+    .replace(/\s+/g, "");     // remove spaces: "B -" -> "B-"
+}
+
+
 function gradeAtLeastC(g) {
-  const key = String(g || "").toUpperCase().trim();
+  const key = normalizeGrade(g);
   return (GRADE_RANK[key] ?? 0) >= GRADE_RANK["C"];
 }
 
@@ -287,17 +295,6 @@ export async function runAiAnalysis(application, documents, sunwayCourses = []) 
   let applicantGrade = null;
   let applicantCreditHours = null;
 
-  if (transcriptPath && targetCourseName) {
-    const transcriptText = await extractPdfText(transcriptPath);
-
-    const applicantExtract = await extractApplicantCourseResultWithAI({
-          transcriptText,
-      targetCourseName,
-    });
-
-    applicantGrade = applicantExtract?.grade ?? null;
-    applicantCreditHours = applicantExtract?.credit_hours ?? null;
-  }
 
   // 3) Sunway credit hours (prefer DB; fallback to AI if missing)
   let sunwayCreditHours = null;
@@ -341,11 +338,29 @@ export async function runAiAnalysis(application, documents, sunwayCourses = []) 
   );
 
   // Prefer doc whose file name matches prev_subject_name
-  const targetName = String(application?.prev_subject_name || "").toLowerCase();
-  let applicantContentDoc =
-    nonTranscriptDocs.find(d => (d.file_name || "").toLowerCase().includes(targetName))
-    || nonTranscriptDocs[0]
-    || documents?.[0];
+  const target = application?.prev_subject_name || "";
+  const candidates = nonTranscriptDocs;
+
+  let applicantContentDoc = null;
+  let bestScore = 0;
+
+  for (const d of candidates) {
+    const score = tokenOverlapScore(target, d.file_name);
+    if (score > bestScore) {
+      bestScore = score;
+      applicantContentDoc = d;
+    }
+  }
+
+  // fallback if everything is bad
+  if (!applicantContentDoc || bestScore < 0.3) {
+    applicantContentDoc =
+      candidates.find(d => /syllabus|outline|math|engineering/i.test(d.file_name || "")) ||
+      candidates[0] ||
+      null;
+  }
+
+
 
   const applicantDocPath = applicantContentDoc?.file_path || null;
 
@@ -353,7 +368,10 @@ export async function runAiAnalysis(application, documents, sunwayCourses = []) 
     ? await extractPdfText(applicantContentDoc.file_path)
     : "";
 
-  // 2) compare against EACH requested sunway syllabus
+  console.log("[AI] target prev_subject_name:", application?.prev_subject_name);
+  console.log("[AI] selected applicant doc:", applicantContentDoc?.file_name, "score:", bestScore);
+  
+    // 2) compare against EACH requested sunway syllabus
   const perCourse = [];
 
   for (const c of (sunwayCourses || [])) {
@@ -390,7 +408,16 @@ export async function runAiAnalysis(application, documents, sunwayCourses = []) 
       method: "gemini_files",
     });
 
-    if (applicantGrade == null && out.grade_detected != null) applicantGrade = out.grade_detected;
+    const cleanedGrade = String(out.grade_detected || "")
+      .toUpperCase()
+      .replace(/\s+/g, "")     // "B -" -> "B-"
+      .replace("–", "-");      // in case it's an en-dash
+
+    const normalizedOutGrade = cleanedGrade || null;
+
+    // Prefer Gemini-files grade (more reliable), but don't overwrite with empty
+    if (normalizedOutGrade) applicantGrade = normalizedOutGrade;
+
     if (applicantCreditHours == null && out.credit_hours != null) applicantCreditHours = out.credit_hours;
 
     reasoning.similarity_evidence_by_course = reasoning.similarity_evidence_by_course || {};
@@ -482,6 +509,29 @@ async function pdfPathToInlinePart(absPath) {
   };
 }
 
+function normalizeAndTokenize(str) {
+  return String(str || "")
+    .toLowerCase()
+    .replace(/mathematics|maths|math/g, "math") // normalize common variant
+    .replace(/[^a-z0-9]+/g, " ")
+    .split(/\s+/)
+    .filter(t => t.length >= 3 || /^\d+$/.test(t)) // keep digits like "1", "2"
+    .filter(t => !["pdf", "course", "module", "subject", "outline"].includes(t));
+}
+
+
+function tokenOverlapScore(a, b) {
+  const A = new Set(normalizeAndTokenize(a));
+  const B = new Set(normalizeAndTokenize(b));
+
+  if (!A.size || !B.size) return 0;
+
+  let overlap = 0;
+  for (const t of A) if (B.has(t)) overlap++;
+
+  // normalize by shorter string to avoid bias
+  return overlap / Math.min(A.size, B.size);
+}
 
 // ---- Gemini JSON helper (FREE tier friendly) ----
 export async function callGeminiJSON({ prompt, jsonSchema }) {
@@ -499,7 +549,7 @@ export async function callGeminiJSON({ prompt, jsonSchema }) {
       },
     ],
     generationConfig: {
-      temperature: 0.1,
+      temperature: 0,
       responseMimeType: "application/json",
     },
   };
