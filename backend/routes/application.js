@@ -3,16 +3,18 @@ import pool from "../config/db.js";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-import { extractPdfText, extractApplicantCourseResultWithAI, extractSunwayCreditHoursWithAI, buildSimilarityEvidence, runAiAnalysis } from "../services/aiService.js";
-import { fileURLToPath } from "url";
-
-
+import { extractPdfText, buildSimilarityEvidence, runAiAnalysis } from "../services/aiService.js";
 
 const router = express.Router();
 
 /* =========================================================
-   Helpers
+   Helper functions
    ========================================================= */
+
+/**
+ * parseCodes
+ * -Splits a string like "ETC1033, ETC1023" into ["ETC1033", "ETC1023"].
+ */
 function parseCodes(raw) {
   return String(raw || "")
     .split(/[,;|]/)
@@ -20,13 +22,21 @@ function parseCodes(raw) {
     .filter(Boolean);
 }
 
+/**
+ * toSlStatus
+ * - Converts final decision ("Approve"/"Reject") into SL status label:
+ * - Approve -> "Approved"
+ * - Reject  -> "Rejected"
+ */
 function toSlStatus(finalDecision) {
   const d = String(finalDecision || "").trim().toLowerCase();
   return d === "approve" ? "Approved" : "Rejected";
 }
 
 
-/* ---------- File Upload Setup (PDFs) ---------- */
+/* =========================================================
+   File upload setup (PDF only)
+   ========================================================= */
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const dest = path.join(process.cwd(), "backend", "uploads");
@@ -49,13 +59,18 @@ const upload = multer({
 });
 
 /* =========================================================
-   AI: run & persist into ai_analysis + applications snapshot
+   AI analysis helper
+   ---------------------------------------------------------
+   Runs AI analysis and saves:
+   1) a row in ai_analysis table
+   2) snapshot fields in applications table (ai_score, ai_decision, etc.)
    ========================================================= */
 async function runAndPersistAi(appId) {
   const appR = await pool.query(`SELECT * FROM applications WHERE id = $1`, [appId]);
   if (appR.rows.length === 0) throw new Error("Application not found");
   const application = appR.rows[0];
 
+  // Get applicant documents uploaded for this application
   const docsR = await pool.query(
     `SELECT id, file_name, file_type, file_path, uploaded_at
      FROM documents
@@ -65,9 +80,8 @@ async function runAndPersistAi(appId) {
   );
   const documents = docsR.rows;
 
-  
+  // Get Sunway course(s) using requested_subject_code from application
   const codes = parseCodes(application.requested_subject_code);
-
   const sunwayR = await pool.query(
     `SELECT subject_code, subject_name, credit_hours, syllabus_pdf_path
      FROM sunway_courses
@@ -77,8 +91,10 @@ async function runAndPersistAi(appId) {
 
   const sunwayCourses = sunwayR.rows;
 
+  // Run the AI analysis (Gemini) and return a structured output
   const ai = await runAiAnalysis(application, documents, sunwayCourses);
 
+  // Save a new AI analysis record (keeps history)
   const insertR = await pool.query(
     `INSERT INTO ai_analysis (application_id, similarity, grade_detected, credit_hours, decision, reasoning)
      VALUES ($1, $2, $3, $4, $5, $6)
@@ -86,6 +102,7 @@ async function runAndPersistAi(appId) {
     [appId, ai.similarity, ai.gradeDetected, ai.creditHours, ai.decision, ai.reasoning]
   );
 
+  // Save key AI results into the applications table for quick display
   await pool.query(
     `UPDATE applications
      SET ai_score = $1,
@@ -105,52 +122,42 @@ async function runAndPersistAi(appId) {
   return insertR.rows[0];
 }
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+//const __filename = fileURLToPath(import.meta.url);
 
-// helper to convert "/uploads/xxx.pdf" -> absolute disk path
-function webPathToAbs(webPath) {
-  // webPath like "/uploads/sunway/ETC1023.pdf"
-  const clean = String(webPath || "").replace(/^\/+/, "");
-  // routes/ -> backend/ so go up one level
-  return path.join(__dirname, "..", clean);
-}
 
 /* =========================================================
    0) GET /api/applications/:id/review
-   IMPORTANT: NO pdf parsing here.
-   The review page should consume:
-   - applicant docs (URLs)
-   - sunway courses (URLs)
-   - latest ai_analysis row (reasoning JSON)
+   ---------------------------------------------------------
+   Returns all data needed by the Application Review page:
+   - application record
+   - applicant documents (as URLs)
+   - sunway syllabus PDFs (as URLs)
+   - latest ai_analysis row
    ========================================================= */
 router.get("/:id/review", async (req, res) => {
   try {
     const appId = Number(req.params.id);
     if (!Number.isFinite(appId)) return res.status(400).json({ error: "Invalid application id" });
 
-    // 1) application
     const appR = await pool.query("SELECT * FROM applications WHERE id=$1", [appId]);
     const application = appR.rows[0];
     if (!application) return res.status(404).json({ error: "Application not found" });
 
-    // 2) applicant documents (+ URL for react-pdf)
+    // Applicant documents: convert local file path into an HTTP URL for react-pdf
     const docsR = await pool.query(
       "SELECT * FROM documents WHERE application_id=$1 ORDER BY uploaded_at ASC",
       [appId]
     );
 
     const applicant_documents = docsR.rows.map((d) => {
-      // Your DB stores absolute Windows path like C:\...\backend\uploads\123_file.pdf
       const filename = String(d.file_path || "").split(/[/\\]/).pop();
       return {
         ...d,
-        // direct static URL (because you have app.use("/uploads", express.static(...)))
         file_url: filename ? `http://localhost:5000/uploads/${filename}` : null,
       };
     });
 
-    // 3) Sunway courses (fixed backend library)
+    // Sunway courses: syllabus_pdf_path already stored as a web path (e.g. /uploads/sunway/ETC1023.pdf)
     const codes = parseCodes(application.requested_subject_code);
     const sunwayR = await pool.query(
       "SELECT * FROM sunway_courses WHERE subject_code = ANY($1::text[]) ORDER BY subject_code",
@@ -162,7 +169,7 @@ router.get("/:id/review", async (req, res) => {
       syllabus_url: c.syllabus_pdf_path ? `http://localhost:5000${c.syllabus_pdf_path}` : null,
     }));
 
-    // 4) Latest AI analysis row (if exists)
+    // Latest AI analysis row (if any)
     const aiR = await pool.query(
       `SELECT *
        FROM ai_analysis
@@ -173,7 +180,6 @@ router.get("/:id/review", async (req, res) => {
     );
     const ai_analysis = aiR.rows[0] || null;
 
-    // 5) Return review payload
     return res.json({
       application,
       applicant_documents,
@@ -188,6 +194,9 @@ router.get("/:id/review", async (req, res) => {
 
 /* =========================================================
    1) GET /api/applications
+   ---------------------------------------------------------
+   List applications for dashboard/tasks tables.
+   Supports optional query filters: type, session, q (search).
    ========================================================= */
 router.get("/", async (req, res) => {
   try {
@@ -241,6 +250,8 @@ router.get("/", async (req, res) => {
 
 /* =========================================================
    2) GET /api/applications/:id
+   ---------------------------------------------------------
+   Fetch a single application row.
    ========================================================= */
 router.get("/:id", async (req, res) => {
   try {
@@ -255,7 +266,6 @@ router.get("/:id", async (req, res) => {
     );
     if (appResult.rows.length === 0) return res.status(404).json({ error: "Not found" });
 
-    // Optional: you referenced this table; keep as-is if it exists
     let subjects = [];
     try {
       const subjectsResult = await pool.query(
@@ -283,6 +293,8 @@ router.get("/:id", async (req, res) => {
 
 /* =========================================================
    3) GET /api/applications/:id/documents
+   ---------------------------------------------------------
+   Returns documents for a specific application.
    ========================================================= */
 router.get("/:id/documents", async (req, res) => {
   try {
@@ -315,6 +327,8 @@ router.get("/:id/documents", async (req, res) => {
 
 /* =========================================================
    4) Document view/download
+   ---------------------------------------------------------
+   Streams a PDF file from disk to the browser.
    ========================================================= */
 router.get("/documents/:docId/download", async (req, res) => {
   try {
@@ -388,7 +402,7 @@ router.get("/:id/ai-analysis/latest", async (req, res) => {
 });
 
 /* =========================================================
-   6) POST run AI (manual regenerate)
+   6) POST run AI again (manual regenerate)
    ========================================================= */
 router.post("/:id/ai-analysis/run", async (req, res) => {
   try {
@@ -429,6 +443,7 @@ router.post("/", upload.single("document"), async (req, res) => {
       requested_subject_code,
     } = req.body;
 
+    // Convert "dd/mm/yyyy" to "yyyy-mm-dd" (suitable for Postgres)
     const toISODate = (s) => {
       if (!s) return null;
       const m = String(s).trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
@@ -490,7 +505,9 @@ router.post("/", upload.single("document"), async (req, res) => {
       ]
     );
 
-    // If a doc uploaded in create call: save into documents + auto-run AI
+    // If a document is uploaded during creation:
+    // 1) save into documents table
+    // 2) auto-run AI once to generate initial recommendation
     try {
       if (document_path) {
         await pool.query(
@@ -557,46 +574,13 @@ router.post("/:id/documents", upload.array("documents", 10), async (req, res) =>
   }
 });
 
-/* =========================================================
-   Assign an SL to an application (PL action)
-   ========================================================= */
-router.patch("/:id/assign", async (req, res) => {
-  try {
-    const appId = Number(req.params.id);
-    const { sl_user_id } = req.body || {};
-    if (!sl_user_id) return res.status(400).json({ error: "sl_user_id is required" });
 
-    if (!Number.isFinite(appId)) return res.status(400).json({ error: "Invalid application id" });
-    if (!Number.isFinite(Number(sl_user_id))) return res.status(400).json({ error: "Invalid sl_user_id" });
-
-    const sl = await pool.query(`SELECT id, name, email FROM users WHERE id = $1 AND role = 'SL'`, [sl_user_id]);
-    if (sl.rows.length === 0) return res.status(404).json({ error: "Subject Lecturer not found" });
-
-    const updated = await pool.query(
-      `UPDATE applications
-       SET assigned_to = $1,
-           pl_status = 'Assigned',
-           sl_status = 'To Be Review'
-       WHERE id = $2
-       RETURNING *`,
-      [sl_user_id, appId]
-    );
-
-    if (updated.rows.length === 0) return res.status(404).json({ error: "Application not found" });
-
-    res.json({
-      message: "SL assigned",
-      application: updated.rows[0],
-      sl: sl.rows[0],
-    });
-  } catch (err) {
-    console.error("PATCH /applications/:id/assign error:", err);
-    res.status(500).json({ error: "Failed to assign SL" });
-  }
-});
 
 /* =========================================================
-   9) PATCH /api/applications/:id (update decisions/status)
+   PATCH /api/applications/:id/assign
+   ---------------------------------------------------------
+   Assign a Subject Lecturer to the application.
+   Note: only used during setup for current prototype.
    ========================================================= */
 router.patch("/:id", async (req, res) => {
   try {
@@ -666,32 +650,37 @@ router.patch("/:id", async (req, res) => {
   }
 });
 
-// POST /api/applications/:id/override
-// Supports two flows:
-// 1) accept_ai: true  => mark reviewed using latest ai_analysis (reason NOT required)
-// 2) accept_ai: false => manual override values (reason REQUIRED)
+/* =========================================================
+   POST /api/applications/:id/override
+   ---------------------------------------------------------
+   Used by the Application Review page to finalize SL decision.
+   Two supported flows:
+   1) accept_ai = true  -> accept latest ai_analysis result
+   2) accept_ai = false -> manual override fields (override_reason required)
+   Also updates workflow statuses:
+   - sl_status becomes "Approved" or "Rejected"
+   - pl_status becomes "To Be Review" (when previously "Assigned")
+   ========================================================= */
 router.post("/:id/override", async (req, res) => {
   const client = await pool.connect();
   try {
     const appId = Number(req.params.id);
 
     const {
-      accept_ai,                 // true/false
-      final_similarity,          // 0.82 (NOT 82)
-      final_grade,               // "A-"
-      final_credit_hours,        // 3
+      accept_ai,                 // e.g. true/false
+      final_similarity,          // e.g. 0.82 (NOT 82)
+      final_grade,               // e.g. "A-"
+      final_credit_hours,        // e.g. 3
       final_equivalent_grade,    // optional
       override_reason,           // required only when manual override
-      final_decision,            // "Approve" / "Reject" (optional when accept_ai=true)
-      sunway_subject_code        // optional (for logging)
+      final_decision,            // "Approve" / "Reject" 
+      sunway_subject_code        // optional 
     } = req.body;
 
-    // TODO later: replace with req.user.id from auth middleware
     const overriddenBy = req.body.overridden_by ?? null;
 
     await client.query("BEGIN");
 
-    // 0) fetch old values (for version_history)
     const oldR = await client.query(
       `SELECT final_similarity, final_grade, final_credit_hours, final_equivalent_grade, final_decision
        FROM applications WHERE id = $1`,
@@ -705,7 +694,7 @@ router.post("/:id/override", async (req, res) => {
 
     const old = oldR.rows[0];
 
-    // 1) decide effective values (either accept_ai or manual override)
+    // Decide what values to store (AI-accepted vs manual override)
     let effSimilarity = final_similarity ?? null;
     let effGrade = final_grade ?? null;
     let effCreditHours = final_credit_hours ?? null;
@@ -714,7 +703,6 @@ router.post("/:id/override", async (req, res) => {
     let effReason = override_reason ?? null;
 
     if (accept_ai === true) {
-      // Pull latest AI analysis to “lock in” the review
       const aiR = await client.query(
         `SELECT similarity, grade_detected, credit_hours, decision
          FROM ai_analysis
@@ -735,12 +723,10 @@ router.post("/:id/override", async (req, res) => {
       effCreditHours = ai.credit_hours ?? null;
       effDecision = ai.decision ?? null;
 
-      // reason optional when accepting AI
       effReason = (override_reason && String(override_reason).trim())
         ? String(override_reason).trim()
         : "Accepted AI suggestion (marked as reviewed)";
     } else {
-      // manual override => reason required
       if (!override_reason || !String(override_reason).trim()) {
         await client.query("ROLLBACK");
         return res.status(400).json({ error: "override_reason is required for manual override" });
@@ -748,7 +734,6 @@ router.post("/:id/override", async (req, res) => {
       effReason = String(override_reason).trim();
     }
 
-    // 2) update applications (also mark SL reviewed if you want)
     const slStatus = toSlStatus(effDecision);
 
     const upd = await client.query(
@@ -784,7 +769,7 @@ router.post("/:id/override", async (req, res) => {
 
     const updated = upd.rows[0];
 
-    // 3) version history (log only changed fields)
+    // Log only fields that changed 
     const changes = [
       ["final_similarity", old.final_similarity, updated.final_similarity],
       ["final_grade", old.final_grade, updated.final_grade],
@@ -821,10 +806,13 @@ router.post("/:id/override", async (req, res) => {
 
 
 
-/**
- * GET /api/applications/:id/similarity-evidence?docId=12&sunwayCode=ETC1023
- * Returns top matching text chunks as "evidence" (no PDF highlighting needed yet).
- */
+/* =========================================================
+   GET /api/applications/:id/similarity-evidence
+   ---------------------------------------------------------
+   Generates top-matching text chunks between:
+   - applicant document text
+   - sunway syllabus text
+   ========================================================= */
 router.get("/:id/similarity-evidence", async (req, res) => {
   try {
     const appId = Number(req.params.id);
@@ -835,7 +823,6 @@ router.get("/:id/similarity-evidence", async (req, res) => {
     if (!Number.isFinite(docId)) return res.status(400).json({ error: "Invalid docId" });
     if (!sunwayCode) return res.status(400).json({ error: "Missing sunwayCode" });
 
-    // 1) get applicant doc path
     const docR = await pool.query(
       "SELECT * FROM documents WHERE id=$1 AND application_id=$2",
       [docId, appId]
@@ -843,7 +830,6 @@ router.get("/:id/similarity-evidence", async (req, res) => {
     const doc = docR.rows[0];
     if (!doc) return res.status(404).json({ error: "Applicant document not found" });
 
-    // 2) get sunway syllabus path
     const swR = await pool.query(
       "SELECT * FROM sunway_courses WHERE subject_code=$1",
       [sunwayCode]
@@ -852,20 +838,17 @@ router.get("/:id/similarity-evidence", async (req, res) => {
     if (!sw) return res.status(404).json({ error: "Sunway course not found" });
     if (!sw.syllabus_pdf_path) return res.status(400).json({ error: "Sunway syllabus_pdf_path missing" });
 
-    // doc.file_path = absolute windows path
     const applicantPath = doc.file_path;
 
-    // sw.syllabus_pdf_path = "/uploads/sunway/ETC1023.pdf"
     const swFilename = String(sw.syllabus_pdf_path).split("/").pop();
     const sunwayPath = path.join(process.cwd(), "backend", "uploads", "sunway", swFilename);
 
-    // 3) extract text
+    // Extract raw text from both PDFs
     const [appText, sunText] = await Promise.all([
       extractPdfText(applicantPath),
       extractPdfText(sunwayPath),
     ]);
 
-    // 4) build evidence
     const evidence = buildSimilarityEvidence(appText, sunText, 10);
 
     return res.json({
