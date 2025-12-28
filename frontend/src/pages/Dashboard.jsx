@@ -6,7 +6,7 @@ import AssignSLModal from "../components/AssignSLModal";
 
 
 function buildMailtoForReminder(row) {
-  const to = (row.sl_email || "").trim();
+  const to = (row.pl_email || "").trim();
   const subject = `[Reminder] Action needed for Application ${row.application_id || row.id}`;
   const body = `
 Hi,
@@ -135,33 +135,27 @@ export default function Dashboard() {
 
   
 
-  // ✅ PL Home rules (based on pl_status + sl_status)
+  // ✅ SL Home rules (based on sl_status + pl_status)
   const pendingActions = useMemo(() => {
     return apps.filter((a) => {
-      const pl = a.pl_status;
-      const sl = a.sl_status;
+      const pl = String(a.pl_status || "").trim();
+      const sl = String(a.sl_status || "").trim();
 
-      // 1) PL needs to assign an SL
-      if (pl === "To Be Assign") return true;
-
-      // 2) SL already decided, PL must review
-      if (pl === "To Be Review" && ["Approved", "Rejected"].includes(sl)) return true;
-
-      return false;
+      // SL needs to review when PL has assigned it, and SL status is To Be Review
+      return pl === "Assigned" && sl === "To Be Review";
     });
   }, [apps]);
 
-  const waitingOnSL = useMemo(() => {
+  const waitingOnPL = useMemo(() => {
     return apps.filter((a) => {
-      const pl = a.pl_status;
-      const sl = a.sl_status;
+      const pl = String(a.pl_status || "").trim();
+      const sl = String(a.sl_status || "").trim();
 
-      // 3) PL assigned, waiting for SL to review
-      if (pl === "Assigned" && sl === "To Be Review") return true;
-
-      return false;
+      // SL already decided, waiting for PL to review
+      return pl === "To Be Review" && ["Approved", "Rejected"].includes(sl);
     });
   }, [apps]);
+
 
 
 
@@ -177,8 +171,8 @@ export default function Dashboard() {
   };
 
   const handleRemind = (row) => {
-    if (!row.sl_email) {
-      alert("No Subject Lecturer email found yet. Assign an SL first.");
+    if (!row.pl_email) {
+      alert("No Programme Leader email found yet. Assign a PL first.");
       return;
     }
     window.location.href = buildMailtoForReminder(row);
@@ -192,23 +186,15 @@ export default function Dashboard() {
         title="Your Pending Actions"
         countBadge={pendingActions.length}
         rows={pendingActions}
-        getActionLabel={(row) => {
-          if (row.pl_status === "To Be Assign") return "Assign SL";
-          if (row.pl_status === "To Be Review") return "Review";
-          return "Open";
-        }}
-        onActionClick={(row) => {
-          if (row.pl_status === "To Be Assign") return handleAssign(row);
-          if (row.pl_status === "To Be Review") return handleReview(row);
-          return handleReview(row);
-        }}
-
+        getActionLabel={() => "Review"}
+        onActionClick={handleReview}
       />
+
 
       <SectionCard
         title="Waiting on Programme Leaders"
-        countBadge={waitingOnSL.length}
-        rows={waitingOnSL}
+        countBadge={waitingOnPL.length}
+        rows={waitingOnPL}
         getActionLabel={() => "Remind"}
         onActionClick={handleRemind}
         showTip

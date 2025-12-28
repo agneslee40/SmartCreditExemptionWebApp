@@ -53,6 +53,11 @@ router.post("/login", async (req, res) => {
 
     const user = result.rows[0];
 
+    // ✅ Allow SL logins only
+    if (user.role !== "SL") {
+      return res.status(403).json({ error: "Access denied. SL accounts only." });
+    }
+
     // Compare password
     const isMatch = await bcrypt.compare(password, user.password_hash);
     if (!isMatch) {

@@ -20,6 +20,12 @@ function parseCodes(raw) {
     .filter(Boolean);
 }
 
+function toSlStatus(finalDecision) {
+  const d = String(finalDecision || "").trim().toLowerCase();
+  return d === "approve" ? "Approved" : "Rejected";
+}
+
+
 /* ---------- File Upload Setup (PDFs) ---------- */
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -743,19 +749,25 @@ router.post("/:id/override", async (req, res) => {
     }
 
     // 2) update applications (also mark SL reviewed if you want)
+    const slStatus = toSlStatus(effDecision);
+
     const upd = await client.query(
       `UPDATE applications
-       SET final_similarity = $1,
-           final_grade = $2,
-           final_credit_hours = $3,
-           final_equivalent_grade = $4,
-           final_decision = $5,
-           override_reason = $6,
-           overridden_by = $7,
-           overridden_at = NOW(),
-           sl_status = 'Reviewed'
-       WHERE id = $8
-       RETURNING *`,
+      SET final_similarity = $1,
+          final_grade = $2,
+          final_credit_hours = $3,
+          final_equivalent_grade = $4,
+          final_decision = $5,
+          override_reason = $6,
+          overridden_by = $7,
+          overridden_at = NOW(),
+          sl_status = $8,
+          pl_status = CASE
+            WHEN pl_status = 'Assigned' THEN 'To Be Review'
+            ELSE pl_status
+          END
+      WHERE id = $9
+      RETURNING *`,
       [
         effSimilarity,
         effGrade,
@@ -764,9 +776,11 @@ router.post("/:id/override", async (req, res) => {
         effDecision,
         effReason,
         overriddenBy,
+        slStatus,
         appId
       ]
     );
+
 
     const updated = upd.rows[0];
 
