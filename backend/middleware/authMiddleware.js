@@ -1,4 +1,4 @@
-// Middleware to protect routes by verifying JWT access tokens. (Not used yet, for future enhancements only)
+// Middleware to protect routes by verifying JWT access tokens. (Not used yet, but is prepared for future work)
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 
