@@ -202,7 +202,7 @@ export default function ReferenceCases() {
 
   const [tab, setTab] = useState("All"); // All | Approved | Rejected
 
-  // keep your current search bar behaviour
+  // keep current search bar behaviour
   const [queryText, setQueryText] = useState("");
 
   // ✅ bring back old filter panel behaviour
@@ -308,7 +308,7 @@ export default function ReferenceCases() {
         ))}
       </div>
 
-      {/* ✅ (RESTORED) Find similar past cases card (like your old pic1) */}
+      {/* ✅ (RESTORED) Find similar past cases card (like old pic1) */}
       <div className="mt-8 rounded-3xl bg-white shadow-[0_14px_40px_rgba(0,0,0,0.08)] p-6">
         <div className="flex items-center gap-3">
           <div className="text-lg font-extrabold text-[#0B0F2A]">Find similar past cases</div>
@@ -432,7 +432,7 @@ export default function ReferenceCases() {
         </div>
       </div>
 
-      {/* ✅ (RESTORED) Filters modal (like your old pic2) */}
+      {/* ✅ (RESTORED) Filters modal (like old pic2) */}
       {showFilters && (
         <ModalShell title="Filters" onClose={() => setShowFilters(false)}>
           <div className="space-y-4 text-sm text-[#0B0F2A]/80">
@@ -583,7 +583,7 @@ function BigField({ label, value, onChange }) {
   return (
     <div>
       <div className="text-xs font-bold text-[#0B0F2A]/60">{label}</div>
-      {/* look like your pic1 (pill-like field) */}
+      {/* look like pic1 (pill-like field) */}
       <div className="mt-2 rounded-2xl bg-[#EFEFEF] px-5 py-4">
         <input
           value={value}

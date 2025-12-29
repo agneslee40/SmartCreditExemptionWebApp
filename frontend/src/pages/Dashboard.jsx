@@ -160,12 +160,12 @@ export default function Dashboard() {
 
 
   const handleReview = (row) => {
-    // your current route uses row.id in URL; keep that consistent
+    // current route uses row.id in URL; keep that consistent
     navigate(`/tasks/applications/${row.id}/review`);
   };
 
     const handleAssign = (row) => {
-    // Send PL to the application details page, where you can add an "Assign SL" UI later
+    // Send PL to the application details page, can add an "Assign SL" UI later
     openAssignModal(row);
     return;
   };

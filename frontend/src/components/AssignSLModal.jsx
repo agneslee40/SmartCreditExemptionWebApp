@@ -15,7 +15,7 @@ export default function AssignSLModal({ open, onClose, application, onAssigned }
     const loadSLs = async () => {
       try {
         setLoadingUsers(true);
-        // ✅ assumes you already have this endpoint from Part b1:
+        // assuming already have this endpoint from Part b1:
         // GET /api/users?role=SL
         const res = await api.get("/users", { params: { role: "SL" } });
         setSlUsers(res.data || []);

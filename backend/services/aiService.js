@@ -281,11 +281,11 @@ export async function hybridSimilarity({ applicantText, sunwayText }) {
 
 
 /* =========================================================
-   Keep your existing runAiAnalysis stub (unchanged)
+   Keep existing runAiAnalysis stub (unchanged)
    ========================================================= */
 export async function runAiAnalysis(application, documents, sunwayCourses = []) {
   // 1) Decide transcript path (MOST IMPORTANT)
-  // Your applications.document_path is the transcript path in your table.
+  // applications.document_path is the transcript path in table.
   const transcriptPath = application.document_path;
   const reasoning = {};
   const similarity = 0;
@@ -329,7 +329,7 @@ export async function runAiAnalysis(application, documents, sunwayCourses = []) 
     }
   }
 
-  // 4) Similarity (keep your existing)
+  // 4) Similarity (keep existing)
   // Extract text for ALL applicant docs (or at least syllabus-like ones)
   // pick a single "best applicant doc" first (simple heuristic)
   // 1) pick applicant content doc for similarity (NOT transcript)
@@ -445,7 +445,7 @@ export async function runAiAnalysis(application, documents, sunwayCourses = []) 
     per_course: perCourse
   };
 
-// keep your existing checks but use similarityOverall instead of hardcode
+// keep existing checks but use similarityOverall instead of hardcode
 
   const similarityPass = similarityOverall >= 0.8;
   const gradePass = gradeAtLeastC(applicantGrade);

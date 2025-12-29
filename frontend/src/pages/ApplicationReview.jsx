@@ -261,9 +261,9 @@ export default function ApplicationReview() {
 
   async function summaryOk() {
     // Optional: refresh payload so if user stays, UI is updated.
-    // But your requirement says: exit review page immediately.
+    // But requirement says: exit review page immediately.
     closeActionModal();
-    goBack(); // your existing logic already returns to previous page (dashboard or tasks)【turn2file9†ApplicationReview.jsx†L76-L79】
+    goBack(); // existing logic already returns to previous page (dashboard or tasks)【turn2file9†ApplicationReview.jsx†L76-L79】
   }
 
 
@@ -524,7 +524,7 @@ export default function ApplicationReview() {
           <div
             style={{
               ...pdfTitle,
-              color: "#61A0AF" // orange (same family as your active tab)
+              color: "#61A0AF" // orange (same family as active tab)
             }}
           >
             Requested Sunway Subject (Official Syllabus)

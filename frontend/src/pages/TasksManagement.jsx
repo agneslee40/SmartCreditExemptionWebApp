@@ -146,7 +146,7 @@ function ModalShell({ title, children, onClose, wide = false }) {
 }
 
 function mapDbAppToUi(a) {
-  // convert ISO date -> yyyy-mm-dd (same style you used in Dashboard)
+  // convert ISO date -> yyyy-mm-dd (same style used in Dashboard)
   const dateStr = a.date_submitted ? String(a.date_submitted).slice(0, 10) : "-";
 
   return {
@@ -161,19 +161,19 @@ function mapDbAppToUi(a) {
     studentName: a.student_name || "-",
     academicSession: a.academic_session || "-",
 
-    // you named this column "Previously Take Qualification" in UI
+    // previous column "Previously Take Qualification" in UI
     // but DB column is "qualification" (current programme). For now, map it here.
-    // Later we can add a dedicated "previous_qualification" column if you want.
+    // Later can add a dedicated "previous_qualification" column if want.
     prevQual: a.qualification || "-",
 
     formerInstitution: a.former_institution || "-",
     requestedSubject: a.requested_subject || "-",
     type: a.type || "-",
 
-    // We'll compute progress later properly; for now keep everything In Progress
+    // compute progress later properly; for now keep everything In Progress
     progress: "In Progress",
 
-    // backend returns these now (because your GET SELECT includes them)
+    // backend returns these now (because GET SELECT includes them)
     stageStatus: {
       subjectLecturer: a.sl_status || "Pending",
       programmeLeader: a.pl_status || "Pending",
@@ -200,7 +200,7 @@ const computeProgress = (app) => {
 
 const formatDateNice = (iso) => {
   if (!iso) return "-";
-  // show yyyy-mm-dd like your dashboard
+  // show yyyy-mm-dd like dashboard
   return String(iso).slice(0, 10);
 };
 
@@ -245,23 +245,23 @@ export default function TasksManagement() {
         setLoading(true);
         const res = await api.get("/applications");
 
-        // map backend rows → UI rows used by your table
+        // map backend rows → UI rows used by table
         const mapped = (res.data || []).map((r) => {
           const progress = computeProgress(r);
 
           return {
-            id: r.application_id,                 // your UI uses A001 style
+            id: r.application_id,                 
             dbId: r.id,                           // keep DB id for navigation
             date: formatDateNice(r.date_submitted),
             studentId: r.student_id || "-",
             studentName: r.student_name || "-",
             academicSession: r.academic_session || "-",
-            prevQual: r.qualification || "-",     // you used "Previously Take Qualification"
+            prevQual: r.qualification || "-",     // "Previously Take Qualification"
             formerInstitution: r.former_institution || "-",
             requestedSubject: r.requested_subject || "-",
             type: r.type || "-",
            
-            // stage statuses (use your real DB fields)
+            // stage statuses (use real DB fields)
             stageStatus: {
               subjectLecturer: r.sl_status || "Pending",
               programmeLeader: r.pl_status || "To Be Assign",
@@ -322,14 +322,14 @@ export default function TasksManagement() {
     // -------- New Filters --------
     if (fType !== "All") list = list.filter((a) => a.type === fType);
 
-    // These assume you already mapped DB -> stageStatus like:
+    // These assume already mapped DB -> stageStatus like:
     // stageStatus.subjectLecturer, programmeLeader, registry
     if (fPl !== "All") list = list.filter((a) => a.stageStatus?.programmeLeader === fPl);
     if (fSl !== "All") list = list.filter((a) => a.stageStatus?.subjectLecturer === fSl);
     if (fReg !== "All") list = list.filter((a) => a.stageStatus?.registry === fReg);
 
     // Team filter (temporary): treat Assigned SL as “team”
-    // If your app object has something like a.team.members, we can filter by SL name/email later.
+    // If app object has something like a.team.members, can filter by SL name/email later.
     if (fAssignedTo !== "All") {
       list = list.filter((a) => {
         const members = a.team?.members || [];
@@ -443,7 +443,7 @@ export default function TasksManagement() {
         </button>
       </div>
 
-      {/* Table container (internal vertical scroll + horizontal scroll like your figma) */}
+      {/* Table container (internal vertical scroll + horizontal scroll like figma) */}
       <div className="mt-8 rounded-3xl bg-white shadow-[0_14px_40px_rgba(0,0,0,0.08)]">
         <div className="max-h-[62vh] overflow-y-auto rounded-3xl">
           <div className="overflow-x-auto">
@@ -552,7 +552,7 @@ export default function TasksManagement() {
                         
                       </tr>
 
-                      {/* Row 2: action strip (matches your figma “pills + buttons”) */}
+                      {/* Row 2: action strip (matches figma “pills + buttons”) */}
                       <tr className="border-b border-black/10">
                         <td colSpan={9} className="px-8 py-4">
                           <div className="flex items-center gap-4">
@@ -714,7 +714,7 @@ export default function TasksManagement() {
                 className="w-full rounded-xl border border-black/10 bg-white px-3 py-2 outline-none"
               />
               <div className="mt-2 text-xs text-[#0B0F2A]/60">
-                (For now, filter by SL email. Later we’ll replace this with a dropdown from real users.)
+                (Filter by assigned Subject Lecturer email)
               </div>
             </div>
           </div>

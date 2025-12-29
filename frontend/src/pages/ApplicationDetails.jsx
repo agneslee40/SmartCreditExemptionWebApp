@@ -124,7 +124,7 @@ export default function ApplicationDetails() {
         setApp(appRes.data);
         setDocs(docsRes.data || []);
 
-        // OPTIONAL: only if you implement this route in backend (Part 2)
+        // OPTIONAL: only if implement this route in backend (Part 2)
         // If not implemented yet, it will fail silently.
         try {
           const aiRes = await api.get(`/applications/${id}/ai-analysis/latest`);
