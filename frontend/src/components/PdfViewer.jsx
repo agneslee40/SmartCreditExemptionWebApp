@@ -12,10 +12,10 @@ export default function PdfViewer({ fileUrl }) {
   const [numPages, setNumPages] = useState(null);
   const [pageNumber, setPageNumber] = useState(1);
 
-  // ✅ Zoom controls
+  // Zoom controls
   const [zoom, setZoom] = useState(1.0); // 1.0 = 100%
 
-  // ✅ Fit-to-container width
+  // Fit-to-container width
   const [containerWidth, setContainerWidth] = useState(800);
 
   useEffect(() => {
@@ -38,9 +38,7 @@ export default function PdfViewer({ fileUrl }) {
 
   const zoomPct = useMemo(() => Math.round(zoom * 100), [zoom]);
 
-  // Page width: fit inside panel, then apply zoom
   const pageWidth = useMemo(() => {
-    // subtract some padding so it doesn't touch edges
     const base = Math.max(320, containerWidth - 32);
     return Math.round(base * zoom);
   }, [containerWidth, zoom]);
@@ -86,7 +84,6 @@ export default function PdfViewer({ fileUrl }) {
             onLoadSuccess={({ numPages }) => {
               setNumPages(numPages);
               setPageNumber(1);
-              // optional: reset zoom when changing doc
               setZoom(1.0);
             }}
             loading={<div style={{ padding: 24 }}>Loading PDF…</div>}

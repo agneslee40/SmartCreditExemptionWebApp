@@ -135,7 +135,7 @@ export default function Dashboard() {
 
   
 
-  // ✅ SL Home rules (based on sl_status + pl_status)
+  // SL Home rules (based on sl_status + pl_status)
   const pendingActions = useMemo(() => {
     return apps.filter((a) => {
       const pl = String(a.pl_status || "").trim();
@@ -160,12 +160,11 @@ export default function Dashboard() {
 
 
   const handleReview = (row) => {
-    // current route uses row.id in URL; keep that consistent
     navigate(`/tasks/applications/${row.id}/review`);
   };
 
     const handleAssign = (row) => {
-    // Send PL to the application details page, can add an "Assign SL" UI later
+    // Send PL to the application details page
     openAssignModal(row);
     return;
   };

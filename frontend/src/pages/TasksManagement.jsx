@@ -153,7 +153,6 @@ function mapDbAppToUi(a) {
     // keep DB primary key for routing
     dbId: a.id,
 
-    // UI currently shows application code like "A001"
     id: a.application_id,
 
     date: dateStr,
@@ -161,19 +160,14 @@ function mapDbAppToUi(a) {
     studentName: a.student_name || "-",
     academicSession: a.academic_session || "-",
 
-    // previous column "Previously Take Qualification" in UI
-    // but DB column is "qualification" (current programme). For now, map it here.
-    // Later can add a dedicated "previous_qualification" column if want.
     prevQual: a.qualification || "-",
 
     formerInstitution: a.former_institution || "-",
     requestedSubject: a.requested_subject || "-",
     type: a.type || "-",
 
-    // compute progress later properly; for now keep everything In Progress
     progress: "In Progress",
 
-    // backend returns these now (because GET SELECT includes them)
     stageStatus: {
       subjectLecturer: a.sl_status || "Pending",
       programmeLeader: a.pl_status || "Pending",
@@ -181,7 +175,6 @@ function mapDbAppToUi(a) {
       registryReminderSent: false, // UI-only
     },
 
-    // team/remarks are not coming from backend yet
     team: { name: "—", members: [] },
     remarks: a.remarks ? [{ by: "Programme Leader", text: a.remarks }] : [],
   };
@@ -200,7 +193,6 @@ const computeProgress = (app) => {
 
 const formatDateNice = (iso) => {
   if (!iso) return "-";
-  // show yyyy-mm-dd like dashboard
   return String(iso).slice(0, 10);
 };
 
@@ -232,7 +224,6 @@ export default function TasksManagement() {
   const [fReg, setFReg] = useState("All"); // All | Pending | Approved | Rejected
 
   const [fAssignedTo, setFAssignedTo] = useState("All"); 
-  // All | (later: actual SL names/emails)
 
   const [teamModalAppId, setTeamModalAppId] = useState(null);
 
@@ -245,23 +236,21 @@ export default function TasksManagement() {
         setLoading(true);
         const res = await api.get("/applications");
 
-        // map backend rows → UI rows used by table
         const mapped = (res.data || []).map((r) => {
           const progress = computeProgress(r);
 
           return {
             id: r.application_id,                 
-            dbId: r.id,                           // keep DB id for navigation
+            dbId: r.id,                         
             date: formatDateNice(r.date_submitted),
             studentId: r.student_id || "-",
             studentName: r.student_name || "-",
             academicSession: r.academic_session || "-",
-            prevQual: r.qualification || "-",     // "Previously Take Qualification"
+            prevQual: r.qualification || "-",    
             formerInstitution: r.former_institution || "-",
             requestedSubject: r.requested_subject || "-",
             type: r.type || "-",
            
-            // stage statuses (use real DB fields)
             stageStatus: {
               subjectLecturer: r.sl_status || "Pending",
               programmeLeader: r.pl_status || "To Be Assign",
@@ -269,10 +258,10 @@ export default function TasksManagement() {
               registryReminderSent: false,
             },
 
-            // remarks: for now DB has single text field
+           
             remarks: r.remarks ? [{ by: "Programme Leader", text: r.remarks }] : [],
 
-            // “team” pill: simple prototype
+           
             team: {
               name: "Engineering",
               members: [
@@ -322,14 +311,12 @@ export default function TasksManagement() {
     // -------- New Filters --------
     if (fType !== "All") list = list.filter((a) => a.type === fType);
 
-    // These assume already mapped DB -> stageStatus like:
-    // stageStatus.subjectLecturer, programmeLeader, registry
+
     if (fPl !== "All") list = list.filter((a) => a.stageStatus?.programmeLeader === fPl);
     if (fSl !== "All") list = list.filter((a) => a.stageStatus?.subjectLecturer === fSl);
     if (fReg !== "All") list = list.filter((a) => a.stageStatus?.registry === fReg);
 
-    // Team filter (temporary): treat Assigned SL as “team”
-    // If app object has something like a.team.members, can filter by SL name/email later.
+
     if (fAssignedTo !== "All") {
       list = list.filter((a) => {
         const members = a.team?.members || [];
@@ -339,7 +326,6 @@ export default function TasksManagement() {
 
     // -------- Sorting --------
     const getDateValue = (a) => {
-      // supports both: "2025-12-14" OR "7th January 2025"
       const d = new Date(a.date);
       if (!isNaN(d.getTime())) return d.getTime();
       return 0;
@@ -382,7 +368,7 @@ export default function TasksManagement() {
     const appId = editRemarkAppId;
     if (!appId) return;
 
-    // store as a single remark for now (static version)
+
     setApps((prev) =>
       prev.map((a) =>
         a.id === appId
@@ -443,7 +429,7 @@ export default function TasksManagement() {
         </button>
       </div>
 
-      {/* Table container (internal vertical scroll + horizontal scroll like figma) */}
+      {/* Table container */}
       <div className="mt-8 rounded-3xl bg-white shadow-[0_14px_40px_rgba(0,0,0,0.08)]">
         <div className="max-h-[62vh] overflow-y-auto rounded-3xl">
           <div className="overflow-x-auto">
@@ -552,7 +538,7 @@ export default function TasksManagement() {
                         
                       </tr>
 
-                      {/* Row 2: action strip (matches figma “pills + buttons”) */}
+                      {/* Row 2: action strip */}
                       <tr className="border-b border-black/10">
                         <td colSpan={9} className="px-8 py-4">
                           <div className="flex items-center gap-4">
@@ -565,7 +551,6 @@ export default function TasksManagement() {
                             >
                               <span>Team: {a.team.name}</span>
 
-                              {/* avatars */}
                               <div className="flex -space-x-2">
                                 {a.team.members.slice(0, 3).map((m) => (
                                   <img
@@ -617,12 +602,11 @@ export default function TasksManagement() {
             </table>
           </div>
 
-          {/* (optional) small bottom padding so scrollbar doesn’t feel “cut” */}
           <div className="h-4" />
         </div>
       </div>
 
-      {/* Filter panel placeholder (for later: date, subject, programme, team, sort, etc.) */}
+      {/* Filter panel */}
       {showFilterPanel && (
         <ModalShell title="Filters" onClose={() => setShowFilterPanel(false)} wide>
           <div className="grid grid-cols-2 gap-4 text-sm text-[#0B0F2A]">
@@ -704,7 +688,7 @@ export default function TasksManagement() {
               </select>
             </div>
 
-            {/* Team filter (temporary) */}
+            {/* Team filter */}
             <div className="rounded-2xl bg-[#F5F5F5] p-4">
               <div className="font-bold mb-2">Assigned SL (Team)</div>
               <input

@@ -146,7 +146,7 @@ function SelectedTeamPanel({ team }) {
 
 /* ------------------ main page ------------------ */
 export default function Teams() {
-  // mock data (swap to API later)
+  // mock data 
   const initialTeams = [
     {
       id: "t-eng",
@@ -251,7 +251,7 @@ export default function Teams() {
 
 
   const [teams, setTeams] = useState(initialTeams);
-  // Demo directory (replace with API search later)
+  // Demo directory 
   const directoryUsers = useMemo(
     () => [
       { name: "PL Demo", email: "pl@sunway.edu.my", role: "PL", avatar: "https://i.pravatar.cc/100?img=1" },
@@ -351,7 +351,7 @@ export default function Teams() {
       prev.map((t) => {
         if (t.id !== selectedId) return t;
 
-        // If removing PL, set to PL Demo (safe fallback)
+        // If removing PL, set to PL Demo 
         if (t.programmeLeader?.email === email) {
           const fallbackPL = directoryUsers.find((u) => u.role === "PL") || t.programmeLeader;
           const updated = { ...t, programmeLeader: fallbackPL };
@@ -391,7 +391,7 @@ export default function Teams() {
 
         <div className="flex-1" />
 
-        {/* Search + filter (like figma) */}
+        {/* Search + filter */}
         <div className="flex items-center gap-4 pt-2">
           <div className="relative w-[280px]">
             <input
@@ -432,7 +432,7 @@ export default function Teams() {
         </div>
       </div>
 
-      {/* Small screen: selected panel drops below */}
+  
       <div className="xl:hidden mt-10">
         <SelectedTeamPanel
           team={selectedTeam}

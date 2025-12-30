@@ -1,11 +1,9 @@
 import { NavLink } from "react-router-dom";
 
-// tighter + bolder like Figma
 const pillBase =
   "px-6 py-2 rounded-full font-extrabold text-lg leading-none " +
   "transition-all select-none";
 
-// Figma-style: darker inner shadow (not bright)
 const pillInactive =
   "bg-white text-[#0B0F2A] " +
   "shadow-[inset_0_6px_10px_rgba(0,0,0,0.18),inset_0_-2px_6px_rgba(255,255,255,0.65)]";

@@ -202,16 +202,13 @@ export default function ReferenceCases() {
 
   const [tab, setTab] = useState("All"); // All | Approved | Rejected
 
-  // keep current search bar behaviour
   const [queryText, setQueryText] = useState("");
 
-  // ✅ bring back old filter panel behaviour
   const [showFilters, setShowFilters] = useState(false);
   const [filterType, setFilterType] = useState("All"); // All | Credit Exemption | Credit Transfer
   const [filterFaculty, setFilterFaculty] = useState("All");
   const [sortBy, setSortBy] = useState("Most Similar"); // Most Similar | Newest | Oldest
 
-  // ✅ bring back old “find similar past cases” card inputs (prototype)
   const [similarQuery, setSimilarQuery] = useState({
     requestedSubject: "MPU 3213 Malay Language for Communication",
     type: "Credit Exemption",
@@ -308,7 +305,6 @@ export default function ReferenceCases() {
         ))}
       </div>
 
-      {/* ✅ (RESTORED) Find similar past cases card (like old pic1) */}
       <div className="mt-8 rounded-3xl bg-white shadow-[0_14px_40px_rgba(0,0,0,0.08)] p-6">
         <div className="flex items-center gap-3">
           <div className="text-lg font-extrabold text-[#0B0F2A]">Find similar past cases</div>
@@ -363,7 +359,6 @@ export default function ReferenceCases() {
         </div>
       </div>
 
-      {/* Results container (unchanged) */}
       <div className="mt-8 rounded-3xl bg-white shadow-[0_14px_40px_rgba(0,0,0,0.08)]">
         <div className="overflow-x-auto rounded-3xl">
           <table className="min-w-[1200px] w-full text-left">
@@ -432,7 +427,6 @@ export default function ReferenceCases() {
         </div>
       </div>
 
-      {/* ✅ (RESTORED) Filters modal (like old pic2) */}
       {showFilters && (
         <ModalShell title="Filters" onClose={() => setShowFilters(false)}>
           <div className="space-y-4 text-sm text-[#0B0F2A]/80">
@@ -499,7 +493,6 @@ export default function ReferenceCases() {
         </ModalShell>
       )}
 
-      {/* View modal (unchanged) */}
       {selectedCase && (
         <ModalShell title={`Case Details — ${selectedCase.id}`} onClose={() => setSelectedCase(null)} wide>
           <div className="flex flex-wrap items-center gap-3">
@@ -583,7 +576,6 @@ function BigField({ label, value, onChange }) {
   return (
     <div>
       <div className="text-xs font-bold text-[#0B0F2A]/60">{label}</div>
-      {/* look like pic1 (pill-like field) */}
       <div className="mt-2 rounded-2xl bg-[#EFEFEF] px-5 py-4">
         <input
           value={value}

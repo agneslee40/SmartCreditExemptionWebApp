@@ -105,7 +105,7 @@ export default function ApplicationDetails() {
 
   const [app, setApp] = useState(null);
   const [docs, setDocs] = useState([]);
-  const [ai, setAi] = useState(null); // optional
+  const [ai, setAi] = useState(null); 
   const [loading, setLoading] = useState(true);
 
   // sorting for documents
@@ -124,8 +124,8 @@ export default function ApplicationDetails() {
         setApp(appRes.data);
         setDocs(docsRes.data || []);
 
-        // OPTIONAL: only if implement this route in backend (Part 2)
-        // If not implemented yet, it will fail silently.
+        
+        
         try {
           const aiRes = await api.get(`/applications/${id}/ai-analysis/latest`);
           setAi(aiRes.data || null);
@@ -202,7 +202,7 @@ export default function ApplicationDetails() {
   if (loading) return <div className="mt-10 text-sm">Loading…</div>;
   if (!app) return <div className="mt-10 text-sm">Application not found.</div>;
 
-// ---- requested subjects from new table (preferred) ----
+// ---- requested subjects from new table ----
   const reqList = Array.isArray(app.requested_subjects) ? app.requested_subjects : [];
 
   const subjectNames = reqList

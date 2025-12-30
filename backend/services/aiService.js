@@ -2,13 +2,8 @@
 import fs from "fs/promises";
 import path from "path";
 import axios from "axios";
-
-
-// ✅ Use pdfjs-dist directly (no pdf-parse)
 import * as pdfjs from "pdfjs-dist/legacy/build/pdf.mjs";
 
-// In Node, pdfjs needs a worker disabled
-// (legacy build usually works without explicit worker config)
 
 
 // -------------------------
@@ -20,7 +15,7 @@ export async function extractPdfText(filePath) {
 
   const loadingTask = pdfjs.getDocument({
     data,
-    disableWorker: true,  // ✅ Node: avoid workerSrc issues
+    disableWorker: true, 
   });
   const pdf = await loadingTask.promise;
 
@@ -62,8 +57,8 @@ const GRADE_RANK = {
 function normalizeGrade(g) {
   return String(g || "")
     .toUpperCase()
-    .replace(/–/g, "-")       // en-dash -> hyphen
-    .replace(/\s+/g, "");     // remove spaces: "B -" -> "B-"
+    .replace(/–/g, "-")      
+    .replace(/\s+/g, "");    
 }
 
 
@@ -188,10 +183,10 @@ export function buildSimilarityEvidence(appText, sunwayText, topK = 10) {
 export function similarityFromEvidence(evidence) {
   if (!evidence?.section_scores?.length) return 0;
 
-  // Option 1 (simple): take best section score
+ 
   const best = Math.max(...evidence.section_scores.map(s => Number(s.avg_score || 0)));
 
-  // clamp 0..1
+
   return Math.max(0, Math.min(1, best));
 }
 
@@ -201,7 +196,7 @@ async function geminiSimilarityScore({ applicantText, sunwayText }) {
 
   const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 
-  // keep prompts short-ish to reduce cost/latency
+
   const a = applicantText.slice(0, 12000);
   const s = sunwayText.slice(0, 12000);
 
@@ -246,12 +241,12 @@ ${s}
   const text =
     data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
-  // parse JSON safely
+  // parse JSON 
   let obj;
   try {
     obj = JSON.parse(text);
   } catch {
-    // sometimes model wraps JSON; try extracting first {...}
+  
     const m = text.match(/\{[\s\S]*\}/);
     if (!m) throw new Error("Gemini returned non-JSON");
     obj = JSON.parse(m[0]);
@@ -266,7 +261,7 @@ export async function hybridSimilarity({ applicantText, sunwayText }) {
   const aLen = (applicantText || "").length;
   const sLen = (sunwayText || "").length;
 
-  // If either side is too short, TF cosine becomes nonsense → fallback to Gemini
+
   const POOR_TEXT = aLen < 1000 || sLen < 1000;
 
   if (!POOR_TEXT) {
@@ -281,11 +276,10 @@ export async function hybridSimilarity({ applicantText, sunwayText }) {
 
 
 /* =========================================================
-   Keep existing runAiAnalysis stub (unchanged)
+   Keep existing runAiAnalysis
    ========================================================= */
 export async function runAiAnalysis(application, documents, sunwayCourses = []) {
-  // 1) Decide transcript path (MOST IMPORTANT)
-  // applications.document_path is the transcript path in table.
+  // 1) Decide transcript path
   const transcriptPath = application.document_path;
   const reasoning = {};
   const similarity = 0;
@@ -296,7 +290,7 @@ export async function runAiAnalysis(application, documents, sunwayCourses = []) 
   let applicantCreditHours = null;
 
 
-  // 3) Sunway credit hours (prefer DB; fallback to AI if missing)
+  // 3) Sunway credit hours 
   let sunwayCreditHours = null;
 
   if (sunwayCourses.length) {
@@ -309,11 +303,10 @@ export async function runAiAnalysis(application, documents, sunwayCourses = []) 
   }
 
   if (sunwayCreditHours == null && sunwayCourses.length) {
-    // fallback: AI extract from syllabus PDF text (slower)
+    // fallback: AI extract from syllabus PDF text
     for (const c of sunwayCourses) {
       if (!c?.syllabus_pdf_path) continue;
 
-      // syllabus_pdf_path is like "/uploads/sunway/ETC1023.pdf"
       // convert to absolute path on disk
       const abs = path.join(process.cwd(), "backend", c.syllabus_pdf_path.replace(/^\/+/, ""));
       try {
@@ -411,12 +404,12 @@ export async function runAiAnalysis(application, documents, sunwayCourses = []) 
 
     const cleanedGrade = String(out.grade_detected || "")
       .toUpperCase()
-      .replace(/\s+/g, "")     // "B -" -> "B-"
-      .replace("–", "-");      // in case it's an en-dash
+      .replace(/\s+/g, "") 
+      .replace("–", "-");     
 
     const normalizedOutGrade = cleanedGrade || null;
 
-    // Prefer Gemini-files grade (more reliable), but don't overwrite with empty
+    
     if (normalizedOutGrade) applicantGrade = normalizedOutGrade;
 
     if (applicantCreditHours == null && out.credit_hours != null) applicantCreditHours = out.credit_hours;
@@ -427,7 +420,7 @@ export async function runAiAnalysis(application, documents, sunwayCourses = []) 
     reasoning.similarity_evidence_by_course = reasoning.similarity_evidence_by_course || {};
     reasoning.similarity_evidence_by_course[c.subject_code] = out.evidence;
 
-    continue; // skip any old code (and continue next course)
+    continue; 
 
     }
 
@@ -439,13 +432,13 @@ export async function runAiAnalysis(application, documents, sunwayCourses = []) 
   const similarityOverall =
     perCourse.length ? Math.min(...perCourse.map(x => x.score)) : 0;
 
-  // Store details so UI can show “how similarity came”
+
   reasoning.similarity = {
     overall: similarityOverall,
     per_course: perCourse
   };
 
-// keep existing checks but use similarityOverall instead of hardcode
+
 
   const similarityPass = similarityOverall >= 0.8;
   const gradePass = gradeAtLeastC(applicantGrade);
@@ -456,7 +449,7 @@ export async function runAiAnalysis(application, documents, sunwayCourses = []) 
     
   const decision = (similarityPass && gradePass && creditHoursPass) ? "Approve" : "Reject";
 
-  // 5) Checks (adjust as you like)
+
   const checks = {
     similarity: {
       pass: similarityPass,
@@ -553,17 +546,17 @@ function computeWeightedOverall(sectionScores) {
   for (const row of sectionScores) {
     const section = row?.section;
     const w = SECTION_WEIGHTS[section] ?? 0;
-    const s = Number(row?.score ?? row?.avg_score ?? 0); // support either key
+    const s = Number(row?.score ?? row?.avg_score ?? 0); 
     sum += s * w;
   }
 
-  // clamp 0..1
+
   if (sum < 0) return 0;
   if (sum > 1) return 1;
   return Number(sum.toFixed(3)); // keep stable rounding
 }
 
-// ---- Gemini JSON helper (FREE tier friendly) ----
+// ---- Gemini JSON helper ----
 export async function callGeminiJSON({ prompt, jsonSchema }) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("Missing GEMINI_API_KEY in backend/.env");
@@ -584,7 +577,7 @@ export async function callGeminiJSON({ prompt, jsonSchema }) {
     },
   };
 
-  // If you want to enforce structure, embed schema into prompt (Gemini JSON mode helps, but still be defensive)
+
   const res = await fetch(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -599,7 +592,7 @@ export async function callGeminiJSON({ prompt, jsonSchema }) {
   const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!text) throw new Error("Gemini returned empty response");
 
-  // Defensive parse
+  
   let parsed;
   try {
     parsed = JSON.parse(text);
@@ -637,7 +630,7 @@ export async function callGeminiJSONWithParts({ parts, model = "gemini-2.5-flash
     throw new Error("Gemini returned empty response text.");
   }
 
-  // same “strip code fences” defense
+ 
   const cleaned = text.replace(/```json|```/g, "").trim();
   return JSON.parse(cleaned);
 }
@@ -712,7 +705,7 @@ If grade/credit cannot be found, set them null and still compute similarity + ev
 
 
 export async function extractApplicantCourseResultWithAI({ transcriptText, targetCourseName }) {
-  const trimmed = transcriptText.slice(0, 35000); // keep token cost small
+  const trimmed = transcriptText.slice(0, 35000); 
 
   const prompt = `
   You are extracting structured data from a university transcript.

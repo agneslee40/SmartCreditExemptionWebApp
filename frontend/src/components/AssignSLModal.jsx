@@ -15,8 +15,7 @@ export default function AssignSLModal({ open, onClose, application, onAssigned }
     const loadSLs = async () => {
       try {
         setLoadingUsers(true);
-        // assuming already have this endpoint from Part b1:
-        // GET /api/users?role=SL
+
         const res = await api.get("/users", { params: { role: "SL" } });
         setSlUsers(res.data || []);
       } catch (e) {
@@ -27,7 +26,6 @@ export default function AssignSLModal({ open, onClose, application, onAssigned }
       }
     };
 
-    // reset state whenever opened
     setQuery("");
     setSelectedId("");
     loadSLs();
@@ -56,7 +54,6 @@ export default function AssignSLModal({ open, onClose, application, onAssigned }
         sl_user_id: Number(selectedId),
       });
 
-      // tell Dashboard to refresh UI
       onAssigned?.(res.data);
       onClose?.();
     } catch (e) {

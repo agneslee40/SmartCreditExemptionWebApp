@@ -46,8 +46,6 @@ function safeDate(d) {
 }
 
 
-
-
 // Grade ranking helper (>= C)
 const GRADE_RANK = {
   "A+": 13, "A": 12, "A-": 11,
@@ -127,7 +125,7 @@ export default function ApplicationReview() {
     setActionSubmitting(false);
   }
 
-  // 1) Load review payload
+  // Load review payload
   useEffect(() => {
     let mounted = true;
 
@@ -140,11 +138,6 @@ export default function ApplicationReview() {
         const data = res.data;
         setPayload(data);
 
-        //debug
-        console.log("review payload", data);
-        console.log("data.ai_analysis", data.ai_analysis);
-        console.log("data.application.ai_score", data.application.ai_score);
-        //debugend
 
         const firstApplicant = data?.applicant_documents?.[0];
         setSelectedApplicantDocId(firstApplicant?.id ?? null);
@@ -169,7 +162,7 @@ export default function ApplicationReview() {
 
   
 
-  // 2) Derived data (safe defaults so hooks never break)
+  // Derived data
   const docs = payload?.applicant_documents || [];
   const sunwayCourses = payload?.sunway_courses || [];
   const ai = payload?.ai_analysis || null;
@@ -203,7 +196,7 @@ export default function ApplicationReview() {
     return code ? (evByCourse[code] || null) : null;
   }, [payload, selectedSunwayCode]);
 
-  // 3) Live rule evaluation (override inputs)
+  // Live rule evaluation (override inputs)
   const checks = useMemo(() => {
     const sim = Number(finalSimilarity);
     const ch = Number(finalCreditHours);
@@ -235,7 +228,7 @@ export default function ApplicationReview() {
       }
 
       if (actionMode === "override") {
-        // Use the exact values user is seeing in the override panel
+        // Use exact values user is seeing in the override panel
         res = await api.post(`/applications/${id}/override`, {
           final_similarity: Number(finalSimilarity) / 100,
           final_grade: finalGrade,
@@ -260,10 +253,8 @@ export default function ApplicationReview() {
   }
 
   async function summaryOk() {
-    // Optional: refresh payload so if user stays, UI is updated.
-    // But requirement says: exit review page immediately.
     closeActionModal();
-    goBack(); // existing logic already returns to previous page (dashboard or tasks)【turn2file9†ApplicationReview.jsx†L76-L79】
+    goBack();
   }
 
 
@@ -287,12 +278,10 @@ export default function ApplicationReview() {
             Application Review
           </h1>
 
-          {/* Case line (NOT indented) */}
           <div className="mt-6 text-sm font-semibold text-[#0B0F2A]/80">
             {application ? `Case: ${application.application_id} • ${application.type}` : "Loading case…"}
           </div>
 
-          {/* Previously/Requested lines (NOT indented) */}
           {application && (
             <div className="mt-2 space-y-1 text-sm leading-6">
               <div>
@@ -524,7 +513,7 @@ export default function ApplicationReview() {
           <div
             style={{
               ...pdfTitle,
-              color: "#61A0AF" // orange (same family as active tab)
+              color: "#61A0AF" // orange 
             }}
           >
             Requested Sunway Subject (Official Syllabus)
@@ -536,7 +525,7 @@ export default function ApplicationReview() {
         </div>
       </div>
 
-      {/* Full-width Similarity Evidence (moved below PDFs) */}
+      {/* Full-width Similarity Evidence */}
       <div
         style={{
           marginTop: 18,
@@ -552,7 +541,6 @@ export default function ApplicationReview() {
         </div>
 
         {/* Sections table */}
-        {/* Dummy section scores + weights (for demo) */}
         {(() => {
           
           const sectionRows =
@@ -561,7 +549,6 @@ export default function ApplicationReview() {
               score: Number(s.score ?? 0),
               matches: Number(s.matches ?? 0),
             })) || [
-              // fallback: keep empty structure so UI doesn't crash
               { section: "Learning Outcomes", score: 0, matches: 0 },
               { section: "Assessment", score: 0, matches: 0 },
               { section: "Synopsis", score: 0, matches: 0 },
@@ -571,7 +558,6 @@ export default function ApplicationReview() {
             ];
 
 
-          // weights must sum to 1.0
           const weights = {
             "Learning Outcomes": 0.35,
             "Assessment": 0.20,
@@ -617,9 +603,6 @@ export default function ApplicationReview() {
                 </div>
               </div>
 
-              
-
-              {/* pass sectionRows to the table below */}
               
               
               {/* Section breakdown card */}
@@ -696,7 +679,7 @@ export default function ApplicationReview() {
 
   
 
-        {/* All matched excerpts (Dummy) */}
+        {/* All matched excerpts */}
         <div style={{ marginTop: 22 }}>
           <div style={{ height: 1, background: "#eee", margin: "6px 0 18px" }} />
           <div style={{ fontWeight: 900, fontSize: 16, marginBottom: 10 }}>
@@ -919,7 +902,7 @@ const pdfTitle = {
 };
 
 const pdfBody = {
-  height: "calc(100vh - 190px)", // keeps PDFs visible without horizontal scroll
+  height: "calc(100vh - 190px)", 
   overflow: "auto"
 };
 

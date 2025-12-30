@@ -14,7 +14,6 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Login has no layout */}
         <Route path="/login" element={<Login />} />
 
         {/* All pages with Topbar & Navbar */}
